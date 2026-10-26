@@ -34,3 +34,23 @@ def test_resultados_duckduckgo():
     p.close()
     assert [r.url for r in p.resultados] == ["https://github.com/ggml-org/llama.cpp", "https://ejemplo.com/b"]
     assert p.resultados[0].fragmento == "Inferencia LLM en C/C++"
+
+
+def test_respaldo_wikipedia():
+    from nova.internet import resultados_wikipedia
+
+    js = '{"query": {"search": [{"title": "Llama.cpp", "snippet": "Biblioteca <span class=\\"searchmatch\\">llama</span> en C&amp;C++"}]}}'
+    r = resultados_wikipedia(js)
+    assert r[0].url == "https://es.wikipedia.org/wiki/Llama.cpp" and r[0].fragmento == "Biblioteca llama en C&C++"
+    assert resultados_wikipedia("no es json") == []
+
+
+def test_buscar_usa_wikipedia_si_ddg_falla(monkeypatch):
+    from nova import internet
+
+    class Cfg(dict):
+        __getattr__ = dict.__getitem__
+    net = internet.Internet(Cfg(internet=True, internet_searxng_url="", internet_timeout=5))
+    monkeypatch.setattr(net, "_duckduckgo", lambda c, n: (_ for _ in ()).throw(OSError("bloqueado")))
+    monkeypatch.setattr(net, "_wikipedia", lambda c, n: [internet.Resultado("W", "https://es.wikipedia.org/wiki/W", "x")])
+    assert net.buscar("algo")[0].titulo == "W"

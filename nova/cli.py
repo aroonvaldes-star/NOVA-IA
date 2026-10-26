@@ -33,11 +33,48 @@ def _nova():
     return Nova(cargar())
 
 
+def abrir_ventana(url: str) -> None:
+    """Abre el orbe en su propia ventana (Edge en modo app en Windows); si no, en el navegador."""
+    if sys.platform == "win32":
+        import os
+        import subprocess
+
+        for base in (os.environ.get("ProgramFiles(x86)", ""), os.environ.get("ProgramFiles", ""), os.environ.get("LOCALAPPDATA", "")):
+            edge = Path(base) / "Microsoft" / "Edge" / "Application" / "msedge.exe"
+            if base and edge.is_file():
+                perfil = cargar().rutas.estado / "ventana"
+                subprocess.Popen([str(edge), f"--app={url}", "--window-size=1100,760", f"--user-data-dir={perfil}",
+                                  "--no-first-run", "--autoplay-policy=no-user-gesture-required"])
+                return
+    webbrowser.open(url)
+
+
+def nova_ya_corre(puerto: int) -> bool:
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{puerto}/", timeout=1.5) as r:
+            return b"nova-token" in r.read(4096)
+    except OSError:
+        return False
+
+
 def cmd_servidor(a) -> int:
     from .servidor import crear_servidor
 
+    puerto_pedido = a.puerto if a.puerto is not None else cargar().web_port
+    if puerto_pedido and nova_ya_corre(puerto_pedido):
+        # Ya está abierta (por ejemplo, otro clic en el acceso directo): solo mostramos su ventana.
+        if a.abrir:
+            abrir_ventana(f"http://127.0.0.1:{puerto_pedido}/")
+        return 0
     nova = _nova()
-    servidor = crear_servidor(nova, a.puerto)
+    try:
+        servidor = crear_servidor(nova, a.puerto)
+    except OSError as exc:
+        print(f"No pude abrir el puerto {puerto_pedido}: {exc}. ¿Otra app lo usa? Cambia web_port en config.json.", file=sys.stderr)
+        nova.cerrar()
+        return 4
     puerto = servidor.server_address[1]
     nova.config.rutas.estado.mkdir(parents=True, exist_ok=True)
     (nova.config.rutas.estado / "puerto").write_text(str(puerto), encoding="utf-8")
@@ -63,7 +100,7 @@ def cmd_servidor(a) -> int:
     url = f"http://127.0.0.1:{puerto}/"
     print(f"NOVA {__version__} escuchando en {url} (motor: {nova.motor.nombre}, modelo: {nova.motor.modelo or 'ninguno'})")
     if a.abrir:
-        threading.Timer(0.8, lambda: webbrowser.open(url)).start()
+        threading.Timer(0.8, lambda: abrir_ventana(url)).start()
     try:
         servidor.serve_forever()
     except KeyboardInterrupt:
@@ -204,6 +241,12 @@ def cmd_estado(a) -> int:
     return 0
 
 
+def cmd_diagnostico(a) -> int:
+    from .diagnostico import diagnosticar
+
+    return 0 if diagnosticar(rapido=a.rapido).fallas == 0 else 1
+
+
 def cmd_nota(a) -> int:
     nova = _nova()
     print(nova.herramientas.usar("nota", {"texto": " ".join(a.texto)}).texto)
@@ -270,6 +313,9 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--sha256")
     s.set_defaults(f=cmd_modelo)
     sub.add_parser("estado").set_defaults(f=cmd_estado)
+    s = sub.add_parser("diagnostico", help="revisa el equipo y deja un reporte")
+    s.add_argument("--rapido", action="store_true", help="sin probar el modelo ni la voz")
+    s.set_defaults(f=cmd_diagnostico)
     s = sub.add_parser("nota")
     s.add_argument("texto", nargs="+")
     s.set_defaults(f=cmd_nota)

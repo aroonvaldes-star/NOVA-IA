@@ -19,7 +19,7 @@ DEFECTO: dict[str, Any] = {
     "manage_server": True,
     "server_binary": "",
     "chat_model": "",
-    "context": 8192,
+    "context": 4096,  # cabe junto a un modelo 4B Q4 en 4 GB de VRAM
     "gpu_layers": 99,
     "server_idle_seconds": 600,
     "motor": "auto",  # auto | llama | simulado
@@ -84,7 +84,7 @@ class Config(dict):
 
 def _leer_json(ruta: Path) -> dict[str, Any]:
     try:
-        with open(ruta, encoding="utf-8") as f:
+        with open(ruta, encoding="utf-8-sig") as f:  # tolera el BOM que deja el Bloc de notas
             datos = json.load(f)
         return datos if isinstance(datos, dict) else {}
     except (OSError, ValueError):

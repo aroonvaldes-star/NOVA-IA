@@ -184,6 +184,20 @@ class _ResultadosDDG(HTMLParser):
             self._cerrar()
 
 
+def resultados_wikipedia(contenido: str) -> list[Resultado]:
+    try:
+        datos = json.loads(contenido)
+    except ValueError:
+        return []
+    salida = []
+    for r in datos.get("query", {}).get("search", []):
+        titulo = str(r.get("title", ""))
+        fragmento = html.unescape(re.sub(r"<[^>]+>", "", str(r.get("snippet", ""))))
+        url = "https://es.wikipedia.org/wiki/" + urllib.parse.quote(titulo.replace(" ", "_"))
+        salida.append(Resultado(titulo, url, " ".join(fragmento.split())))
+    return salida
+
+
 class Internet:
     def __init__(self, config) -> None:
         self.config = config
@@ -219,6 +233,17 @@ class Internet:
             with urllib.request.urlopen(req, timeout=self.config.internet_timeout) as r:
                 datos = json.load(r)
             return [Resultado(x.get("title", ""), x.get("url", ""), x.get("content", "")) for x in datos.get("results", [])][:n]
+        salida: list[Resultado] = []
+        try:
+            salida = self._duckduckgo(consulta, n)
+        except (OSError, ValueError, URLNoPermitida):
+            pass
+        if not salida:
+            # Respaldo: si DuckDuckGo falla o bloquea, Wikipedia en español (API pública y estable).
+            salida = self._wikipedia(consulta, n)
+        return salida
+
+    def _duckduckgo(self, consulta: str, n: int) -> list[Resultado]:
         url = "https://html.duckduckgo.com/html/?" + urllib.parse.urlencode({"q": consulta, "kl": "mx-es"})
         _, contenido = descargar_texto(url, max_kb=600, timeout=self.config.internet_timeout)
         p = _ResultadosDDG()
@@ -230,6 +255,12 @@ class Internet:
                 vistos.add(r.url)
                 salida.append(r)
         return salida[:n]
+
+    def _wikipedia(self, consulta: str, n: int) -> list[Resultado]:
+        url = "https://es.wikipedia.org/w/api.php?" + urllib.parse.urlencode(
+            {"action": "query", "list": "search", "srsearch": consulta, "format": "json", "srlimit": n, "utf8": 1})
+        _, contenido = descargar_texto(url, max_kb=300, timeout=self.config.internet_timeout)
+        return resultados_wikipedia(contenido)
 
     def leer(self, url: str, max_chars: int = 8000) -> dict:
         if not self.activo:

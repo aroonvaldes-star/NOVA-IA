@@ -175,7 +175,7 @@ class Nova:
         busco, reintento, ultima_accion = bool(sembrado), False, None
         for _ in range(int(self.config.agente_max_pasos)):
             self._estado("procesando", ctx)
-            salida = self.motor.chat(mensajes, al_token=self._emisor())
+            salida = sin_pensamientos(self.motor.chat(mensajes, al_token=self._emisor()))
             m = ACCION.match(salida)
             if m:
                 try:
@@ -228,6 +228,15 @@ class Nova:
         def al_token(t: str) -> None:
             if modo["v"] == "accion":
                 return
+            if modo["v"] == "?" and "<think>" in "".join(buffer) + t and "</think>" not in "".join(buffer) + t:
+                buffer.append(t)
+                return
+            if "</think>" in "".join(buffer) + t and modo["v"] == "?":
+                resto = ("".join(buffer) + t).split("</think>", 1)[1]
+                buffer.clear()
+                if not resto:
+                    return
+                t = resto
             if modo["v"] == "final":
                 self.bus.publicar({"tipo": "token", "texto": t})
                 return
@@ -408,6 +417,12 @@ class Nova:
     def cerrar(self) -> None:
         self._detener.set()
         self.motor.detener()
+
+
+def sin_pensamientos(texto: str) -> str:
+    """Quita bloques <think>…</think> que algunos modelos (Qwen3, DeepSeek) dejan en la respuesta."""
+    texto = re.sub(r"<think>.*?</think>", "", texto, flags=re.S)
+    return re.sub(r"^.*?</think>", "", texto, flags=re.S).strip()
 
 
 def _primer_json(texto: str) -> str:

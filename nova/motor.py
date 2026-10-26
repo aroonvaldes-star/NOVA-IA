@@ -82,8 +82,18 @@ class _TrabajoWindows:
         import ctypes
         from ctypes import wintypes
 
+        self.ctypes = ctypes
         self.k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        # Los HANDLE son punteros: sin restype/argtypes ctypes los cortaría a 32 bits.
+        self.k32.CreateJobObjectW.restype = wintypes.HANDLE
+        self.k32.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
+        self.k32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+        self.k32.SetInformationJobObject.restype = wintypes.BOOL
+        self.k32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+        self.k32.AssignProcessToJobObject.restype = wintypes.BOOL
         self.handle = self.k32.CreateJobObjectW(None, None)
+        if not self.handle:
+            raise OSError(ctypes.get_last_error(), "CreateJobObjectW falló")
 
         class LIMIT(ctypes.Structure):
             _fields_ = [
@@ -105,10 +115,12 @@ class _TrabajoWindows:
 
         info = EXT()
         info.Basic.LimitFlags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
-        self.k32.SetInformationJobObject(self.handle, 9, ctypes.byref(info), ctypes.sizeof(info))
+        if not self.k32.SetInformationJobObject(self.handle, 9, ctypes.byref(info), ctypes.sizeof(info)):
+            raise OSError(ctypes.get_last_error(), "SetInformationJobObject falló")
 
     def asignar(self, proceso: subprocess.Popen) -> None:
-        self.k32.AssignProcessToJobObject(self.handle, int(proceso._handle))  # type: ignore[attr-defined]
+        if not self.k32.AssignProcessToJobObject(self.handle, int(proceso._handle)):  # type: ignore[attr-defined]
+            raise OSError(self.ctypes.get_last_error(), "AssignProcessToJobObject falló")
 
 
 # ------------------------------------------------------------------ llama.cpp

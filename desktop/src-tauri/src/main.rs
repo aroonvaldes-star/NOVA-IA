@@ -60,6 +60,15 @@ fn comando_nucleo() -> Command {
             }
         }
     }
+    // El entorno que crea instalar.bat
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        let pyw = PathBuf::from(local).join("NOVA").join("venv").join("Scripts").join("pythonw.exe");
+        if pyw.is_file() {
+            let mut c = Command::new(pyw);
+            c.arg("-m").arg("nova").args(&argumentos);
+            return c;
+        }
+    }
     let raiz = std::env::var("NOVA_RAIZ")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join(".."));

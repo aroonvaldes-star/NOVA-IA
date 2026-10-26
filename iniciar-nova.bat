@@ -1,4 +1,8 @@
 @echo off
-rem Abre NOVA en el navegador mientras no tengas el envoltorio de escritorio compilado.
+rem Abre NOVA. Despues de instalar tambien puedes usar el acceso "NOVA" del menu Inicio (Ctrl+Alt+N).
 cd /d "%~dp0"
-start "" pythonw -m nova servidor --abrir
+if exist "%LOCALAPPDATA%\NOVA\venv\Scripts\pythonw.exe" (
+  start "" "%LOCALAPPDATA%\NOVA\venv\Scripts\pythonw.exe" -m nova servidor --abrir
+) else (
+  start "" pythonw -m nova servidor --abrir
+)

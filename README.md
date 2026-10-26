@@ -2,7 +2,7 @@
 
 NOVA es una asistente de inteligencia artificial que vive en tu computadora. Es un proyecto propio e independiente: tiene su motor, su memoria, su voz, su personalidad y su avatar, un orbe holográfico que flota libre por tu escritorio. Funciona sin internet y, cuando hay conexión y no sabe algo, lo busca en seguida.
 
-> **Estado: versión 0.1 (MVP).** El núcleo, la memoria, la política de seguridad, internet, la conexión con el celular y el orbe están hechos y probados en Linux (193 pruebas automáticas y prueba del orbe en Chromium). En un Windows real todavía **no se ha probado nada**, ni con un modelo de lenguaje real: ver [Pendiente de verificar](#pendiente-de-verificar).
+> **Estado: versión 0.1.1 (MVP).** El núcleo, la memoria, la política de seguridad, internet, la conexión con el celular y el orbe están hechos y probados en Linux (196 pruebas automáticas y prueba del orbe en Chromium). En un Windows real todavía **no se ha probado nada**, ni con un modelo de lenguaje real: ver [Pendiente de verificar](#pendiente-de-verificar).
 
 ![Estados del orbe: procesando, buscando, hablando y activa en tecnología](docs/capturas/estados.png)
 
@@ -44,28 +44,24 @@ desktop/src-tauri/    envoltorio de escritorio: ventana transparente, bandeja, a
 tests/                pruebas automáticas
 ```
 
-## Instalar en Windows (por ahora a mano)
+## Instalar en Windows
 
-Todo se instala con tu usuario, sin permisos de administrador.
+Doble clic en **`instalar.bat`** (sin «Ejecutar como administrador»). Instala Python si falta, crea el entorno de NOVA, detecta tu tarjeta y baja llama.cpp con CUDA 12 (o Vulkan), el modelo Qwen3 4B Instruct (Q4_K_M, verificado con SHA256), whisper.cpp con el modelo small y Piper con voz es_MX. Crea el acceso **NOVA** en el menú Inicio (Ctrl+Alt+N), revisa el equipo con `nova diagnostico` y abre NOVA. Todo queda en `%LOCALAPPDATA%\NOVA`.
 
-1. **Python 3.12** de python.org (marca «Add python.exe to PATH»). Luego, en la carpeta de NOVA:
-   ```
-   pip install -e .[completo]
-   ```
-   (`completo` agrega `trafilatura` para leer mejor las páginas y `cryptography` para que la conexión con el celular vaya cifrada.)
-2. **Motor (llama.cpp):** de las *releases* de `ggml-org/llama.cpp`, descarga la versión para Windows con **CUDA 12** (tu RTX 3050) y su paquete `cudart`, o la de **Vulkan** si CUDA da problemas. Copia el contenido a `%LOCALAPPDATA%\NOVA\llama\` (debe quedar `llama-server.exe` ahí).
-3. **Modelo:** para 4 GB de VRAM, un modelo de 3 a 4B en `Q4_K_M` en formato GGUF (por ejemplo Qwen3 4B Instruct o Llama 3.2 3B Instruct). Instálalo con:
-   ```
-   nova modelo instalar C:\ruta\al\modelo.gguf
-   ```
-4. **Oír (opcional):** de las *releases* de `ggml-org/whisper.cpp`, la versión para Windows x64, en `%LOCALAPPDATA%\NOVA\whisper\` (debe quedar `whisper-cli.exe`), y el modelo `ggml-small.bin` en esa misma carpeta.
-5. **Hablar (opcional):** Piper para Windows (`rhasspy/piper`) en `%LOCALAPPDATA%\NOVA\piper\` y una voz es_MX de `rhasspy/piper-voices` (por ejemplo `es_MX-claude-high.onnx` con su `.onnx.json`) en la misma carpeta.
+La guía de la primera prueba, paso a paso, está en [PRUEBA-WINDOWS.md](PRUEBA-WINDOWS.md).
 
-Revisa todo con `nova estado`.
+<details><summary>Instalación a mano</summary>
+
+1. Python 3.12 de python.org y `pip install -e .[completo]` en esta carpeta.
+2. llama.cpp para Windows (`llama-<versión>-bin-win-cuda-12.4-x64.zip` más `cudart-llama-bin-win-cuda-12.4-x64.zip`, o la de Vulkan) en `%LOCALAPPDATA%\NOVA\llama\`.
+3. Un modelo GGUF de 3–4B en Q4_K_M: `nova modelo instalar C:\ruta\modelo.gguf`.
+4. Opcional: `whisper-cli.exe` y `ggml-small.bin` en `%LOCALAPPDATA%\NOVA\whisper\`; `piper.exe` y `es_MX-claude-high.onnx` (+ `.onnx.json`) en `%LOCALAPPDATA%\NOVA\piper\`.
+
+</details>
 
 ## Usar
 
-- **Navegador (lo más rápido para probar):** doble clic en `iniciar-nova.bat`, o `python -m nova servidor --abrir`.
+- **Ventana de NOVA:** el acceso **NOVA** del menú Inicio (Ctrl+Alt+N) o `iniciar-nova.bat`. Abre el orbe en su propia ventana (Edge en modo app). Si NOVA ya está abierta, solo trae la ventana.
 - **Escritorio (orbe libre sobre todas las ventanas):** necesitas Rust y la CLI de Tauri (`cargo install tauri-cli --version "^2"`). Luego en `desktop\src-tauri`:
   ```
   cargo tauri dev        (para probar)

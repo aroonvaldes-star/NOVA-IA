@@ -137,3 +137,14 @@ def test_extraccion_con_modelo(mem):
                            ' {"tipo": "quien", "texto": "Su contraseña es x", "confianza": 0.99}]'])
     guardados = aprendizaje.extraer_con_modelo(motor, mem, ["smn si jala"])
     assert guardados == ["Escribe con mexicanismos"]
+
+
+def test_config_con_bom(tmp_path, monkeypatch):
+    monkeypatch.setenv("NOVA_HOME", str(tmp_path))
+    from nova.config import cargar
+    from nova.rutas import rutas
+
+    r = rutas()
+    r.config.mkdir(parents=True)
+    (r.config / "config.json").write_text('{"platica_max_dia": 1}', encoding="utf-8-sig")
+    assert cargar().platica_max_dia == 1
