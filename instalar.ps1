@@ -1,15 +1,16 @@
-﻿# Instalador de NOVA para Windows 10/11 (x64), sin permisos de administrador.
+# Instalador de NOVA para Windows 10/11 (x64), sin permisos de administrador.
+# Archivo solo en ASCII a proposito: asi Windows PowerShell lo lee bien sin importar la codificacion.
 #
-# Qué hace:
+# Que hace:
 #   1. Busca Python 3.11+ (si falta, lo instala para tu usuario con winget).
 #   2. Crea un entorno propio en %LOCALAPPDATA%\NOVA\venv e instala NOVA.
 #   3. Descarga llama.cpp (CUDA 12 si tienes NVIDIA, si no Vulkan) a %LOCALAPPDATA%\NOVA\llama.
 #   4. Descarga el modelo (Qwen3 4B Instruct, Q4_K_M, unos 2.5 GB) a %LOCALAPPDATA%\NOVA\models.
-#   5. Descarga el oído (whisper.cpp + modelo small) y la voz (Piper + voz es_MX).
-#   6. Crea los accesos directos «NOVA» en el menú Inicio y el escritorio (Ctrl+Alt+N).
+#   5. Descarga el oido (whisper.cpp + modelo small) y la voz (Piper + voz es_MX).
+#   6. Crea los accesos directos "NOVA" en el menu Inicio y el escritorio (Ctrl+Alt+N).
 #   7. Corre `nova diagnostico` y abre NOVA.
 #
-# Puedes volver a ejecutarlo: lo que ya está descargado y verificado no se baja otra vez.
+# Puedes volver a ejecutarlo: lo que ya esta descargado y verificado no se baja otra vez.
 #
 # Opciones:
 #   -Motor cuda|vulkan|cpu   fuerza una variante de llama.cpp (por defecto la detecta)
@@ -43,7 +44,7 @@ function Aviso($texto) { Write-Host "   !   $texto" -ForegroundColor Yellow }
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host 'NOVA se instala y se usa con tu usuario normal, no como administrador.' -ForegroundColor Red
-    Write-Host 'Cierra esta ventana y vuelve a abrir instalar.bat con doble clic (sin «Ejecutar como administrador»).'
+    Write-Host 'Cierra esta ventana y vuelve a abrir instalar.bat con doble clic (sin "Ejecutar como administrador").'
     exit 1
 }
 if (-not [Environment]::Is64BitOperatingSystem) { throw 'NOVA necesita Windows de 64 bits.' }
@@ -83,7 +84,7 @@ function Descargar($Url, $Destino, $Sha256 = $null) {
         try {
             if ($curl) {
                 & $curl.Source -L --fail --retry 3 --retry-delay 3 -C - -A 'NOVA-instalador' -o $parcial $Url
-                if ($LASTEXITCODE -ne 0) { throw "curl salió con $LASTEXITCODE" }
+                if ($LASTEXITCODE -ne 0) { throw "curl salio con $LASTEXITCODE" }
             } else {
                 Invoke-WebRequest -Uri $Url -OutFile $parcial -Headers $Agente -UseBasicParsing
             }
@@ -97,7 +98,7 @@ function Descargar($Url, $Destino, $Sha256 = $null) {
         $h = (Get-FileHash $parcial -Algorithm SHA256).Hash.ToLower()
         if ($h -ne $Sha256.ToLower()) {
             Remove-Item $parcial -Force
-            throw "La huella SHA256 de $(Split-Path $Destino -Leaf) no coincide; lo borré por seguridad. Vuelve a intentarlo."
+            throw "La huella SHA256 de $(Split-Path $Destino -Leaf) no coincide; lo borre por seguridad. Vuelve a intentarlo."
         }
         Bien "verificado (SHA256): $(Split-Path $Destino -Leaf)"
     }
@@ -105,13 +106,13 @@ function Descargar($Url, $Destino, $Sha256 = $null) {
 }
 
 function Ultima-Version($Repo, $Patron) {
-    # llama.cpp publica sus compilaciones (b1234) como «prerelease» y marca como «latest»
-    # versiones sin binarios, así que busco la versión más reciente que traiga el archivo.
+    # llama.cpp publica sus compilaciones (b1234) como "prerelease" y marca como "latest"
+    # versiones sin binarios, asi que busco la version mas reciente que traiga el archivo.
     $versiones = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases?per_page=30" -Headers $Agente
     foreach ($v in $versiones) {
         if (-not $v.draft -and ($v.assets | Where-Object { $_.name -match $Patron })) { return $v }
     }
-    throw "No encontré en $Repo ninguna versión reciente con un archivo como $Patron"
+    throw "No encontre en $Repo ninguna version reciente con un archivo como $Patron"
 }
 
 function Archivo-De($Version, $Patron) {
@@ -123,14 +124,14 @@ function Archivo-De($Version, $Patron) {
 }
 
 function Extraer-Limpio($Zip, $Carpeta, $Exe) {
-    # Extrae en una carpeta nueva y deja el .exe (y sus DLL) en la raíz de $Carpeta.
+    # Extrae en una carpeta nueva y deja el .exe (y sus DLL) en la raiz de $Carpeta.
     $tmp = "$Carpeta.nuevo"
     if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
     Expand-Archive -Path $Zip -DestinationPath $tmp -Force
     $exe = Get-ChildItem $tmp -Recurse -Filter $Exe | Select-Object -First 1
-    if (-not $exe) { throw "No encontré $Exe dentro de $(Split-Path $Zip -Leaf)" }
+    if (-not $exe) { throw "No encontre $Exe dentro de $(Split-Path $Zip -Leaf)" }
     if (Test-Path $Carpeta) {
-        # Conserva modelos y voces que ya estén ahí
+        # Conserva modelos y voces que ya esten ahi
         Get-ChildItem $Carpeta -File | Where-Object { $_.Extension -in '.bin', '.onnx', '.json', '.gguf' } | Move-Item -Destination $exe.DirectoryName -Force
         Remove-Item $Carpeta -Recurse -Force
     }
@@ -153,12 +154,12 @@ foreach ($candidato in @(
     } catch { }
 }
 if (-not $python) {
-    Aviso 'No encontré Python 3.11 o más nuevo; lo instalo para tu usuario con winget.'
+    Aviso 'No encontre Python 3.11 o mas nuevo; lo instalo para tu usuario con winget.'
     try {
         winget install --id Python.Python.3.12 -e --scope user --accept-package-agreements --accept-source-agreements
-    } catch { throw 'No tengo winget para instalar Python. Instálalo desde python.org (marca «Add python.exe to PATH») y vuelve a ejecutar instalar.bat.' }
+    } catch { throw 'No tengo winget para instalar Python. Instalalo desde python.org (marca "Add python.exe to PATH") y vuelve a ejecutar instalar.bat.' }
     $python = @("$env:LOCALAPPDATA\Programs\Python\Python312\python.exe")
-    if (-not (Test-Path $python[0])) { throw 'No se pudo instalar Python. Instálalo desde python.org (marca «Add python.exe to PATH») y vuelve a ejecutar instalar.bat.' }
+    if (-not (Test-Path $python[0])) { throw 'No se pudo instalar Python. Instalalo desde python.org (marca "Add python.exe to PATH") y vuelve a ejecutar instalar.bat.' }
 }
 Bien "Python: $($python -join ' ')"
 
@@ -171,7 +172,7 @@ if (-not (Test-Path $py)) { & $python[0] @restoPy -m venv $Venv; if ($LASTEXITCO
 & $py -m pip install --disable-pip-version-check -q --upgrade pip
 & $py -m pip install --disable-pip-version-check -q -e "$Raiz[completo]"
 if ($LASTEXITCODE -ne 0) { throw 'No se pudo instalar NOVA con pip.' }
-Bien "NOVA instalada en $Venv (código en $Raiz; no muevas esta carpeta)"
+Bien "NOVA instalada en $Venv (codigo en $Raiz; no muevas esta carpeta)"
 
 # ---------------------------------------------------------- 3. llama.cpp
 
@@ -184,7 +185,7 @@ if ($Motor -eq 'auto') {
         if ($info) {
             Bien "Tarjeta: $info"
             $driver = [double](($info -split ',')[1].Trim() -replace '[^0-9.]', '')
-            if ($driver -ge 528) { $Motor = 'cuda' } else { Aviso "Tu controlador NVIDIA ($driver) es viejo para CUDA 12; uso Vulkan. Actualízalo para ir más rápido." }
+            if ($driver -ge 528) { $Motor = 'cuda' } else { Aviso "Tu controlador NVIDIA ($driver) es viejo para CUDA 12; uso Vulkan. Actualizalo para ir mas rapido." }
         }
     }
 }
@@ -192,7 +193,7 @@ $patron = @{ cuda = '^llama-.*-bin-win-cuda-12\.\d+-x64\.zip$'; vulkan = '^llama
 $llama = Ultima-Version 'ggml-org/llama.cpp' $patron
 Bien "llama.cpp $($llama.tag_name), variante: $Motor"
 $paquete = Archivo-De $llama $patron
-if (-not $paquete) { throw "No encontré la variante $Motor de llama.cpp en la última versión. Prueba: instalar.bat -Motor vulkan" }
+if (-not $paquete) { throw "No encontre la variante $Motor de llama.cpp en la ultima version. Prueba: instalar.bat -Motor vulkan" }
 $zip = Join-Path $Descargas $paquete.Nombre
 Descargar $paquete.Url $zip $paquete.Sha
 Extraer-Limpio $zip (Join-Path $Datos 'llama') 'llama-server.exe'
@@ -202,7 +203,7 @@ if ($Motor -eq 'cuda') {
         $zipRt = Join-Path $Descargas $cudart.Nombre
         Descargar $cudart.Url $zipRt $cudart.Sha
         Expand-Archive -Path $zipRt -DestinationPath (Join-Path $Datos 'llama') -Force
-    } else { Aviso 'No encontré el paquete cudart; si el motor no arranca, instala el controlador más reciente de NVIDIA.' }
+    } else { Aviso 'No encontre el paquete cudart; si el motor no arranca, instala el controlador mas reciente de NVIDIA.' }
 }
 Bien "llama-server en $(Join-Path $Datos 'llama')"
 
@@ -222,7 +223,7 @@ if (-not $SinModelo) {
             'https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf'
         )
         $url = $opciones | Where-Object { Existe-Url $_ } | Select-Object -First 1
-        if (-not $url) { throw 'No pude llegar a Hugging Face para bajar el modelo. Revisa tu conexión y vuelve a ejecutar instalar.bat.' }
+        if (-not $url) { throw 'No pude llegar a Hugging Face para bajar el modelo. Revisa tu conexion y vuelve a ejecutar instalar.bat.' }
         $nombre = Split-Path $url -Leaf
         Write-Host "   Modelo: $nombre (unos 2.5 GB; puede tardar)"
         Descargar $url (Join-Path $modelos $nombre) (Huella-HuggingFace $url)
@@ -232,11 +233,11 @@ if (-not $SinModelo) {
 # ------------------------------------------------------------------- 5. Voz
 
 if (-not $SinVoz) {
-    Paso 'Oído (whisper.cpp)'
+    Paso 'Oido (whisper.cpp)'
     try {
         $whisper = Ultima-Version 'ggml-org/whisper.cpp' '^whisper-bin-x64\.zip$'
         $wz = Archivo-De $whisper '^whisper-bin-x64\.zip$'
-        if (-not $wz) { throw 'no encontré whisper-bin-x64.zip' }
+        if (-not $wz) { throw 'no encontre whisper-bin-x64.zip' }
         $zip = Join-Path $Descargas "whisper-$($whisper.tag_name)-bin-x64.zip"
         Descargar $wz.Url $zip $wz.Sha
         $dirW = Join-Path $Datos 'whisper'
@@ -244,7 +245,7 @@ if (-not $SinVoz) {
         $urlW = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin'
         Descargar $urlW (Join-Path $dirW 'ggml-small.bin') (Huella-HuggingFace $urlW)
         Bien "whisper.cpp $($whisper.tag_name) listo"
-    } catch { Aviso "No se instaló el oído: $_. NOVA funciona sin él (solo texto)." }
+    } catch { Aviso "No se instalo el oido: $_. NOVA funciona sin el (solo texto)." }
 
     Paso 'Voz (Piper)'
     try {
@@ -263,7 +264,7 @@ if (-not $SinVoz) {
                 break
             }
         }
-        if (-not $voz) { throw 'no encontré una voz es_MX' }
+        if (-not $voz) { throw 'no encontre una voz es_MX' }
         if ($voz -ne 'es_MX-claude-high.onnx') {
             $cfgDir = Join-Path $env:APPDATA 'NOVA'
             New-Item -ItemType Directory -Force -Path $cfgDir | Out-Null
@@ -274,7 +275,7 @@ if (-not $SinVoz) {
             $actual | ConvertTo-Json | Set-Content $cfg -Encoding UTF8
         }
         Bien "Piper con la voz $voz"
-    } catch { Aviso "No se instaló la voz: $_. NOVA funciona sin ella (solo texto)." }
+    } catch { Aviso "No se instalo la voz: $_. NOVA funciona sin ella (solo texto)." }
 }
 
 # ------------------------------------------------------------ 6. Accesos
@@ -295,11 +296,11 @@ foreach ($destino in @($inicio, $escritorio)) {
     if ($destino -eq $inicio) { $lnk.Hotkey = 'CTRL+ALT+N' }
     $lnk.Save()
 }
-Bien 'NOVA en el menú Inicio y en el escritorio (atajo: Ctrl+Alt+N)'
+Bien 'NOVA en el menu Inicio y en el escritorio (atajo: Ctrl+Alt+N)'
 
-# ---------------------------------------------------------- 7. Diagnóstico
+# ---------------------------------------------------------- 7. Diagnostico
 
-Paso 'Revisión del equipo (nova diagnostico)'
+Paso 'Revision del equipo (nova diagnostico)'
 $env:PYTHONIOENCODING = 'utf-8'
 & $py -m nova diagnostico
 $fallas = $LASTEXITCODE
@@ -310,8 +311,8 @@ if (-not $SinAbrir) {
 }
 Write-Host ''
 if ($fallas -eq 0) {
-    Write-Host 'Listo. NOVA está instalada.' -ForegroundColor Green
+    Write-Host 'Listo. NOVA esta instalada.' -ForegroundColor Green
 } else {
-    Write-Host 'NOVA quedó instalada, pero el diagnóstico encontró cosas por arreglar (las marcadas con ✘).' -ForegroundColor Yellow
+    Write-Host 'NOVA quedo instalada, pero el diagnostico encontro cosas por arreglar (las marcadas con X).' -ForegroundColor Yellow
 }
 Write-Host "Reporte: $(Join-Path $Datos 'estado\diagnostico.txt')"
