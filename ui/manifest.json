@@ -1,0 +1,11 @@
+{
+  "name": "NOVA",
+  "short_name": "NOVA",
+  "description": "Tu asistente NOVA, conectada directo a tu PC.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#05070f",
+  "theme_color": "#05070f",
+  "lang": "es-MX",
+  "icons": [{ "src": "icono.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

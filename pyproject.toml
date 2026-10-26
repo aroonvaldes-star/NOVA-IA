@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nova"
+version = "0.1.0"
+description = "NOVA: asistente de escritorio local, con memoria, voz e internet como herramienta"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+# Mejor extracción de páginas web y conexión cifrada con el celular
+completo = ["trafilatura>=1.6", "cryptography>=42"]
+pruebas = ["pytest>=8"]
+
+[project.scripts]
+nova = "nova.cli:main"
+
+[tool.setuptools]
+packages = ["nova"]
+
+[tool.setuptools.package-data]
+nova = ["data/*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

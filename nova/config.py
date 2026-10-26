@@ -1,0 +1,120 @@
+"""Configuración de NOVA.
+
+Orden de carga: valores por defecto -> config.json del programa ->
+config.json del usuario -> variables de entorno NOVA_<CLAVE>.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+from typing import Any
+
+from .rutas import Rutas, rutas
+
+DEFECTO: dict[str, Any] = {
+    # Motor local (llama.cpp)
+    "endpoint": "http://127.0.0.1:8181",
+    "manage_server": True,
+    "server_binary": "",
+    "chat_model": "",
+    "context": 8192,
+    "gpu_layers": 99,
+    "server_idle_seconds": 600,
+    "motor": "auto",  # auto | llama | simulado
+    # Servidor de la interfaz
+    "web_port": 8190,
+    # Conexión directa con el celular (red local, solo dispositivos emparejados)
+    "celular": False,
+    "celular_puerto": 8191,
+    "language": "es",
+    # Agente y órdenes
+    "agente_max_pasos": 8,
+    "agente_auto_lectura": True,
+    "command_timeout": 60,
+    "max_file_bytes": 200_000,
+    # Internet como herramienta
+    "internet": True,
+    "internet_buscador": "duckduckgo",
+    "internet_searxng_url": "",
+    "internet_max_paginas": 5,
+    "internet_max_kb_pagina": 300,
+    "internet_timeout": 15,
+    # Unidades
+    "unidades": "todas",
+    "unidades_excluidas": [],
+    "unidades_extraibles": True,
+    # Voz
+    "voz_escucha": False,
+    "voz_palabra": "oye nova",
+    "voz_stt_binario": "",
+    "voz_stt_modelo": "ggml-small.bin",
+    "voz_tts_binario": "",
+    "voz_tts_voz": "es_MX-claude-high.onnx",
+    "voz_responder_hablando": True,
+    # Orbe
+    "orbe_calidad": "alta",
+    "orbe_libre": True,
+    # Memoria personal
+    "memoria_personal": True,
+    "perfil_max_chars": 1600,
+    # Plática de a ratos
+    "platica": True,
+    "platica_max_dia": 3,
+    "platica_minutos_entre": 90,
+    "silencio_desde": "23:00",
+    "silencio_hasta": "08:00",
+}
+
+
+class Config(dict):
+    """Diccionario de configuración con acceso por atributo y rutas."""
+
+    def __init__(self, valores: dict[str, Any], carpetas: Rutas):
+        super().__init__(valores)
+        self.rutas = carpetas
+
+    def __getattr__(self, nombre: str) -> Any:
+        try:
+            return self[nombre]
+        except KeyError as exc:
+            raise AttributeError(nombre) from exc
+
+
+def _leer_json(ruta: Path) -> dict[str, Any]:
+    try:
+        with open(ruta, encoding="utf-8") as f:
+            datos = json.load(f)
+        return datos if isinstance(datos, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _convertir(texto: str, ejemplo: Any) -> Any:
+    if isinstance(ejemplo, bool):
+        return texto.strip().lower() in {"1", "true", "si", "sí", "yes", "on"}
+    if isinstance(ejemplo, int):
+        return int(texto)
+    if isinstance(ejemplo, float):
+        return float(texto)
+    if isinstance(ejemplo, list):
+        return [p.strip() for p in texto.split(",") if p.strip()]
+    return texto
+
+
+def cargar(carpetas: Rutas | None = None) -> Config:
+    carpetas = carpetas or rutas()
+    valores = dict(DEFECTO)
+    for archivo in (carpetas.programa / "config.json", carpetas.config / "config.json"):
+        for clave, valor in _leer_json(archivo).items():
+            if clave in DEFECTO:
+                valores[clave] = valor
+    for clave, ejemplo in DEFECTO.items():
+        env = os.environ.get("NOVA_" + clave.upper())
+        if env is not None:
+            try:
+                valores[clave] = _convertir(env, ejemplo)
+            except ValueError:
+                pass
+    return Config(valores, carpetas)

@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+/build/
+/dist/
+*.egg-info/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+# Modelos y binarios pesados no van en git
+*.gguf
+*.onnx
+*.bin
+llama/
+whisper/
+piper/
