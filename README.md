@@ -4,6 +4,8 @@ NOVA es una asistente de inteligencia artificial que vive en tu computadora. Es 
 
 > **Estado: versión 0.1 (MVP).** El núcleo, la memoria, la política de seguridad, internet, la conexión con el celular y el orbe están hechos y probados en Linux (193 pruebas automáticas y prueba del orbe en Chromium). En un Windows real todavía **no se ha probado nada**, ni con un modelo de lenguaje real: ver [Pendiente de verificar](#pendiente-de-verificar).
 
+![Estados del orbe: procesando, buscando, hablando y activa en tecnología](docs/capturas/estados.png)
+
 ## Qué hace
 
 | | |
@@ -79,6 +81,8 @@ Revisa todo con `nova estado`.
 3. Escribe el código. Listo: el celular queda emparejado y puedes agregarlo a la pantalla de inicio como app.
 
 Windows te preguntará si permites a Python en redes privadas: acepta solo **redes privadas**. «Desconecta mis celulares» revoca todos. Desde el celular puedes chatear, hablarle y confirmar acciones normales; lo que exige clic en la PC (escribir fuera de tu carpeta o en otra unidad) solo se confirma en la PC. Fuera de tu casa no funciona todavía (ver hoja de ruta).
+
+![NOVA en el celular: emparejar y conversar](docs/capturas/celular.png)
 
 Para que el servidor del celular arranque siempre, pon `"celular": true` en `%APPDATA%\NOVA\config.json`.
 
