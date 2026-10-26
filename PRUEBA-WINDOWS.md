@@ -73,6 +73,7 @@ Abre NOVA (acceso del menú Inicio o Ctrl+Alt+N) y escribe, una por una:
 
 | Síntoma | Qué hacer |
 |---|---|
+| «instalar.ps1 no está firmado digitalmente» | No abras el `.ps1` directo. En PowerShell, dentro de la carpeta: `Get-ChildItem -Recurse \| Unblock-File` y luego `.\instalar.bat`. |
 | El instalador dice que no encontró Python y winget falla | Instala Python 3.12 desde python.org marcando «Add python.exe to PATH» y vuelve a correr `instalar.bat`. |
 | `llama-server` no arranca con CUDA | Actualiza el controlador de NVIDIA o instala con Vulkan: abre una terminal en la carpeta y ejecuta `instalar.bat -Motor vulkan`. |
 | Va muy lento | Revisa en el diagnóstico que la variante sea CUDA. En el Administrador de tareas → Rendimiento → GPU, la memoria dedicada debe subir al usar NOVA. |
