@@ -108,7 +108,22 @@ function Descargar($Url, $Destino, $Sha256 = $null) {
 function Ultima-Version($Repo, $Patron) {
     # llama.cpp publica sus compilaciones (b1234) como "prerelease" y marca como "latest"
     # versiones sin binarios, asi que busco la version mas reciente que traiga el archivo.
-    $versiones = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases?per_page=30" -Headers $Agente
+    # Pocas versiones por pedido: la respuesta completa pesa varios MB y a veces se corta.
+    $url = "https://api.github.com/repos/$Repo/releases?per_page=8"
+    $versiones = $null
+    for ($i = 1; $i -le 3 -and -not $versiones; $i++) {
+        try { $versiones = Invoke-RestMethod -Uri $url -Headers $Agente -TimeoutSec 60 }
+        catch {
+            Aviso "GitHub no respondio bien (intento $i de 3): $($_.Exception.Message)"
+            $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+            if ($curl) {
+                $texto = & $curl.Source -sSL --retry 3 -A 'NOVA-instalador' $url
+                if ($LASTEXITCODE -eq 0 -and $texto) { $versiones = ($texto -join "`n") | ConvertFrom-Json }
+            }
+            if (-not $versiones) { Start-Sleep -Seconds (3 * $i) }
+        }
+    }
+    if (-not $versiones) { throw "No pude consultar las versiones de $Repo en GitHub. Revisa tu conexion y vuelve a ejecutar instalar.bat." }
     foreach ($v in $versiones) {
         if (-not $v.draft -and ($v.assets | Where-Object { $_.name -match $Patron })) { return $v }
     }
