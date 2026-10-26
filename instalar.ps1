@@ -104,8 +104,14 @@ function Descargar($Url, $Destino, $Sha256 = $null) {
     Move-Item $parcial $Destino -Force
 }
 
-function Ultima-Version($Repo) {
-    return Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -Headers $Agente
+function Ultima-Version($Repo, $Patron) {
+    # llama.cpp publica sus compilaciones (b1234) como «prerelease» y marca como «latest»
+    # versiones sin binarios, así que busco la versión más reciente que traiga el archivo.
+    $versiones = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases?per_page=30" -Headers $Agente
+    foreach ($v in $versiones) {
+        if (-not $v.draft -and ($v.assets | Where-Object { $_.name -match $Patron })) { return $v }
+    }
+    throw "No encontré en $Repo ninguna versión reciente con un archivo como $Patron"
 }
 
 function Archivo-De($Version, $Patron) {
@@ -141,8 +147,9 @@ foreach ($candidato in @(
         @("$env:LOCALAPPDATA\Programs\Python\Python312\python.exe"), @("$env:LOCALAPPDATA\Programs\Python\Python313\python.exe"))) {
     try {
         $resto = @($candidato | Select-Object -Skip 1)
-        $v = & $candidato[0] @resto -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>$null | Select-Object -Last 1
-        if ($LASTEXITCODE -eq 0 -and $v -and [version]$v -ge [version]'3.11') { $python = $candidato; break }
+        # Sin comillas dobles: Windows PowerShell 5.1 se las quita a los argumentos de programas externos.
+        $v = & $candidato[0] @resto -c 'import sys; print(sys.version_info[0] * 100 + sys.version_info[1])' 2>$null | Select-Object -Last 1
+        if ($LASTEXITCODE -eq 0 -and "$v" -match '^\d+$' -and [int]$v -ge 311) { $python = $candidato; break }
     } catch { }
 }
 if (-not $python) {
@@ -181,9 +188,9 @@ if ($Motor -eq 'auto') {
         }
     }
 }
-$llama = Ultima-Version 'ggml-org/llama.cpp'
-Bien "llama.cpp $($llama.tag_name), variante: $Motor"
 $patron = @{ cuda = '^llama-.*-bin-win-cuda-12\.\d+-x64\.zip$'; vulkan = '^llama-.*-bin-win-vulkan-x64\.zip$'; cpu = '^llama-.*-bin-win-cpu-x64\.zip$' }[$Motor]
+$llama = Ultima-Version 'ggml-org/llama.cpp' $patron
+Bien "llama.cpp $($llama.tag_name), variante: $Motor"
 $paquete = Archivo-De $llama $patron
 if (-not $paquete) { throw "No encontré la variante $Motor de llama.cpp en la última versión. Prueba: instalar.bat -Motor vulkan" }
 $zip = Join-Path $Descargas $paquete.Nombre
@@ -227,7 +234,7 @@ if (-not $SinModelo) {
 if (-not $SinVoz) {
     Paso 'Oído (whisper.cpp)'
     try {
-        $whisper = Ultima-Version 'ggml-org/whisper.cpp'
+        $whisper = Ultima-Version 'ggml-org/whisper.cpp' '^whisper-bin-x64\.zip$'
         $wz = Archivo-De $whisper '^whisper-bin-x64\.zip$'
         if (-not $wz) { throw 'no encontré whisper-bin-x64.zip' }
         $zip = Join-Path $Descargas "whisper-$($whisper.tag_name)-bin-x64.zip"
