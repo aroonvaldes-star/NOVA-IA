@@ -1,6 +1,20 @@
 # Primera prueba de NOVA en tu Windows
 
-## Actualizar a la 0.2 (si ya tenías NOVA instalada)
+## Recibir los cambios sin zip (desde GitHub)
+
+NOVA ahora vive en tu repositorio privado `aroonvaldes-star/NOVA-IA`. Ya no hace falta bajar el zip.
+
+**La primera vez**, abre PowerShell (la terminal de VS Code sirve) dentro de tu carpeta de NOVA, la que tiene `instalar.bat`, y pega:
+
+```powershell
+git init -b main; git remote add origin https://github.com/aroonvaldes-star/NOVA-IA.git; git fetch origin main; git reset --hard origin/main; .\instalar.bat
+```
+
+Si GitHub te pide entrar, hazlo con tu cuenta en la ventana que abre. El instalador reutiliza lo que ya bajaste.
+
+**Desde entonces**, cada vez que te avise de cambios: doble clic en `actualizar.bat`. Cierra NOVA, baja solo lo que cambió, reinstala dependencias si hace falta y la vuelve a abrir. Si cambia el instalador, te avisa para correr `instalar.bat`.
+
+## Actualizar a la 0.2 con el zip (si no usas GitHub)
 
 1. Cierra NOVA.
 2. Descomprime `NOVA-0.2.zip` en una carpeta nueva, por ejemplo `N:\NOVORA_WORKSPACE\NOVA IA\NOVA-0.2`.

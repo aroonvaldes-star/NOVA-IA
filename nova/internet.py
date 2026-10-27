@@ -13,7 +13,9 @@ Seguridad:
 
 from __future__ import annotations
 
+import codecs
 import html
+import http.client
 import ipaddress
 import json
 import re
@@ -61,13 +63,53 @@ def revisar_url(url: str, resolver: bool = True) -> str:
     return urllib.parse.urlunsplit(partes)
 
 
+def _revisar_par(sock) -> None:
+    """Tras conectar, revisa la IP real del servidor (evita el «DNS rebinding»: que el
+    nombre se resuelva a una IP pública al revisarlo y a una interna al conectar)."""
+    try:
+        ip = ipaddress.ip_address(sock.getpeername()[0].split("%")[0])
+    except (OSError, ValueError, IndexError):
+        return
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    if not ip.is_global or ip.is_multicast:
+        sock.close()
+        raise URLNoPermitida("el servidor resultó estar en una red interna")
+
+
+class _HTTPConexion(http.client.HTTPConnection):
+    def connect(self):
+        super().connect()
+        if not self._tunnel_host:  # detrás de un proxy, el par es el proxy
+            _revisar_par(self.sock)
+
+
+class _HTTPSConexion(http.client.HTTPSConnection):
+    def connect(self):
+        super().connect()
+        if not self._tunnel_host:
+            _revisar_par(self.sock)
+
+
+class _HTTP(urllib.request.HTTPHandler):
+    def http_open(self, req):
+        if req.has_proxy():
+            return super().http_open(req)
+        return self.do_open(_HTTPConexion, req)
+
+
+class _HTTPS(urllib.request.HTTPSHandler):
+    def https_open(self, req):
+        return self.do_open(_HTTPSConexion, req, context=self._context)
+
+
 class _Redirecciones(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         revisar_url(newurl)
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-_abridor = urllib.request.build_opener(_Redirecciones())
+_abridor = urllib.request.build_opener(_Redirecciones(), _HTTP(), _HTTPS())
 
 
 def descargar_texto(url: str, max_kb: int = 300, timeout: int = 15) -> tuple[str, str]:
@@ -81,6 +123,10 @@ def descargar_texto(url: str, max_kb: int = 300, timeout: int = 15) -> tuple[str
             raise ValueError(f"no es una página de texto ({tipo or 'tipo desconocido'})")
         datos = r.read(max_kb * 1024 + 1)[: max_kb * 1024]
         juego = r.headers.get_content_charset() or "utf-8"
+        try:
+            codecs.lookup(juego)
+        except LookupError:  # la página declara una codificación que no existe
+            juego = "utf-8"
         return r.geturl(), datos.decode(juego, errors="replace")
 
 

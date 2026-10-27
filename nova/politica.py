@@ -55,6 +55,12 @@ _grupo("borrado y permisos masivos", "del erase rd rmdir attrib rm shred")
 _grupo("herramientas internas de NOVA", "nova llama-server")
 
 EXT_NO_EJECUTABLES = {".bat", ".cmd", ".ps1", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".lnk", ".msi", ".com", ".scr", ".hta"}
+# Además de lo anterior, NOVA nunca escribe archivos que Windows ejecuta o interpreta al abrirlos.
+EXT_NO_ESCRIBIBLES = EXT_NO_EJECUTABLES | {
+    ".exe", ".dll", ".sys", ".drv", ".cpl", ".ocx", ".msc", ".msp", ".pif", ".reg", ".inf", ".url", ".scf",
+    ".psm1", ".psd1", ".ps1xml", ".jar", ".gadget", ".application", ".appref-ms", ".settingcontent-ms",
+    ".library-ms", ".search-ms", ".xll", ".wsh", ".chm",
+}
 
 # ; | & > < $ ` * ? ~ ( ) { } [ ] ! y los metacaracteres de cmd/PowerShell ^ % @
 CARACTERES_SHELL = set(";|&><$`*?~(){}[]!^%@\n\r")
@@ -250,6 +256,10 @@ def revisar_ruta_texto(texto: str, windows: bool | None = None, usuario: str | N
         partes = p.parts[1:]
         for comp in partes:
             c = comp.lower()
+            if c == "..":
+                return ChequeoRuta(False, "no se permiten '..'")
+            if re.search(r"~\d", c):
+                return ChequeoRuta(False, f"nombre corto 8.3 no permitido ({comp}); usa el nombre completo")
             if c.startswith("."):
                 return ChequeoRuta(False, f"carpeta o archivo oculto ({comp})")
             if c in COMPONENTES_PROHIBIDOS:
@@ -323,7 +333,7 @@ def revisar_ruta(texto: str, escribir: bool = False, excluidas: list[str] | None
             ruta.resolve().relative_to(casa)
         except ValueError:
             confirmar = True
-        if ruta.suffix.lower() in EXT_NO_EJECUTABLES | {".exe", ".dll"}:
+        if ruta.suffix.lower() in EXT_NO_ESCRIBIBLES or ruta.name.lower() == "desktop.ini":
             return ChequeoRuta(False, "NOVA no escribe ejecutables, scripts ni accesos directos")
         if "startup" in str(ruta).lower() or "inicio" in [c.lower() for c in ruta.parts]:
             return ChequeoRuta(False, "NOVA no escribe en la carpeta de Inicio")

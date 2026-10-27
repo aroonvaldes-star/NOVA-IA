@@ -459,15 +459,15 @@ class Nova:
         return r
 
     def conectar_celular(self) -> str:
-        url = self.iniciar_celular() if self.iniciar_celular else None
+        try:
+            url = self.iniciar_celular() if self.iniciar_celular else None
+        except RuntimeError as exc:  # p. ej., falta el cifrado: no se abre sin él
+            return str(exc)
         if not url:
             return "Para conectar tu celular necesito estar abierta en el escritorio (nova servidor)."
         codigo = self.emparejador.nuevo_codigo()
-        aviso = "" if url.startswith("https") else (" La conexión no va cifrada porque falta la biblioteca «cryptography»; "
-                                                    "úsala solo en el Wi-Fi de tu casa. Sin cifrado, el micrófono del celular no funciona.")
         return (f"En tu celular, conectado al mismo Wi-Fi, abre {url} y escribe el código {codigo}. Vale 5 minutos."
-                + (" La primera vez tu navegador dirá que el certificado no es de confianza: es el de NOVA, acéptalo." if url.startswith("https") else "")
-                + aviso)
+                " La primera vez tu navegador dirá que el certificado no es de confianza: es el de NOVA, acéptalo.")
 
     def presentarme(self) -> str:
         e = self.estado()

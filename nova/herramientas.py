@@ -223,6 +223,7 @@ class CajaDeHerramientas:
             partes.append(f"[aprendido de {k['url']}] {k['tema']}: {k['texto'][:600]}")
         for d in self.memoria.buscar_documentos(consulta, 5):
             partes.append(f"[archivo {d['ruta']}] {d['fragmento']}")
+            self.leyo_privado = True  # fragmentos de tus archivos: igual que leer_archivo
         return Resultado("\n".join(partes) or "No encontré nada relacionado en mi memoria.", "memoria")
 
     def h_analizar_carpeta(self, ruta: str) -> Resultado:
@@ -380,6 +381,7 @@ class CajaDeHerramientas:
         timeout = self.config.command_timeout
         if decision.nivel == politica.SOLO_LECTURA and decision.autoejecutable:
             r = politica.ejecutar(decision, carpeta, timeout)
+            self.leyo_privado = True  # la salida puede traer contenido de tus archivos
             return Resultado(r["salida"] or "(sin salida)", f"orden {orden}")
         return self._proponer(f"Ejecutar: {orden}" + (f"\nEn: {carpeta}" if carpeta else ""),
                               lambda: politica.ejecutar(decision, carpeta, timeout))

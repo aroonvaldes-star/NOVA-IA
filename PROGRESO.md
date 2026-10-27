@@ -15,7 +15,7 @@ NOVA (antes ATLAS) es una asistente de escritorio para Windows que vive en tu PC
 
 Otras decisiones:
 
-- **Todo local.** No hay repositorio en GitHub por ahora. El código vive en la carpeta del proyecto (`NOVA/`) con su propio historial de git local, y se entrega como `NOVA-0.1.1.zip`.
+- **Repositorio privado.** Al principio todo era local y se entregaba en zip. Desde el 27 de octubre el código está en tu repositorio privado `aroonvaldes-star/NOVA-IA`, y en tu PC se actualiza con doble clic en `actualizar.bat`.
 - **Escrita desde cero.** No comparte código con NOVORA OS; ATLAS solo sirvió de referencia.
 - La especificación base es tu documento **NOVA-WINDOWS.md v1.3**: laptop con RTX 3050 de 4 GB, Windows 10/11, nunca como administrador, política de órdenes en tres niveles, palabra de activación «Oye, NOVA», plática espontánea máximo 3 veces al día, entre otras cosas.
 
