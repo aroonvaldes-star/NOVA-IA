@@ -261,3 +261,44 @@ def test_motor_remoto_manda_la_clave(config):
         assert vistos == ["Bearer secreta"] * 3
     finally:
         srv.shutdown()
+
+
+def test_no_se_queda_pegada_en_platicas_viejas(crear_nova, config, internet_falso):
+    from nova.motor import MotorSimulado
+
+    nova = crear_nova(["FINAL: ok"])
+    nova.procesar("Estoy peleando con el error de Gradle en NOVORA-LINK")
+    hace_dos_dias = time.time() - 2 * 86400
+    with nova.memoria._cerrojo:
+        nova.memoria._db.execute("UPDATE conversaciones SET fecha=?", (hace_dos_dias,))
+        nova.memoria._db.commit()
+    nueva = Nova(config, motor=MotorSimulado(["FINAL: Hola.", "FINAL: Era de Gradle."]), memoria=nova.memoria, internet=internet_falso)
+    assert nueva.historial == []  # lo de hace 2 días no entra a la plática
+    nueva.procesar("Hola, ¿qué tal el error de Gradle?")
+    assert "peleando con el error" not in json.dumps(nueva.motor.recibidos[0], ensure_ascii=False)
+    nueva.procesar("¿Te acuerdas del error de Gradle que te dije?")  # si lo pides, sí lo busca
+    assert "peleando con el error" in json.dumps(nueva.motor.recibidos[1], ensure_ascii=False)
+    assert [m["texto"] for m in nueva.conversacion()][0].startswith("Estoy peleando")  # en pantalla sigue visible
+    nueva.cerrar()
+
+
+def test_cerebro_en_la_nube_para_todo(config, internet_falso):
+    from nova.motor import MotorRemoto, MotorSimulado
+
+    config["cerebro_endpoint"] = "https://inference.generativeai.us-phoenix-1.oci.oraclecloud.com/20231130/actions/v1"
+    config["cerebro_api_modelo"] = "openai.gpt-oss-120b"
+    remoto = MotorRemoto(config)
+    assert remoto._url_chat().endswith("/20231130/actions/v1/chat/completions")
+    assert remoto._nombre_api() == "openai.gpt-oss-120b" and remoto.disponible()
+
+    config["cerebro_auto"] = True
+    grande = MotorSimulado(["FINAL: rápido y listo"])
+    nova = Nova(config, motor=MotorSimulado([]), internet=internet_falso, cerebro=grande)
+    try:
+        assert nova.procesar("revisa este código") == "rápido y listo"
+        internet_falso.activo = False
+        nova.motor.guion.append("FINAL: sin red, local")
+        assert nova.procesar("hola") == "sin red, local"
+    finally:
+        nova.cerrar()
+        nova.memoria.cerrar()

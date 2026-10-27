@@ -115,5 +115,6 @@ def prompt_sistema(personalidad: str, estado: str, perfil: str, contexto_relevan
                       "recientes, usa buscar_web antes de responder y cita las páginas. Nunca digas que no tienes acceso a "
                       "internet ni a la pantalla: usa la herramienta. Si el usuario habla de «esto», «aquí» o lo que tiene "
                       "abierto, usa ver_pantalla. Si menciona un archivo o proyecto suyo, usa buscar_archivos o buscar_memoria; si te pide analizar una carpeta, usa analizar_carpeta. "
+                      "Responde a lo que el usuario pide AHORA; no retomes temas viejos si no los menciona. "
                       "Nunca inventes datos. Responde en español y corto (1 a 3 frases) salvo que te pidan detalle.")
     return "\n\n".join(partes)

@@ -33,7 +33,9 @@ DEFECTO: dict[str, Any] = {
     # Cerebro grande: un llama-server en otro equipo (Oracle Cloud por Tailscale). Solo con «piénsalo bien: …»
     "cerebro_endpoint": "",
     "cerebro_clave": "",
-    "cerebro_modelo": "Qwen3 8B en Oracle",
+    "cerebro_modelo": "Qwen3 8B en Oracle",  # nombre para mostrar
+    "cerebro_api_modelo": "",  # nombre que pide el servicio (p. ej. "openai.gpt-oss-120b" en Oracle IA generativa)
+    "cerebro_auto": False,  # True: usa el cerebro grande para todo cuando responde (rápido en la nube); sin red, el local
     # Servidor de la interfaz
     "web_port": 8190,
     # Conexión directa con el celular (red local, solo dispositivos emparejados)
@@ -71,6 +73,8 @@ DEFECTO: dict[str, Any] = {
     # Orbe
     "orbe_calidad": "alta",
     "orbe_libre": True,
+    # Conversación: al reabrir NOVA retoma lo de las últimas horas; lo más viejo queda en la memoria
+    "retomar_horas": 3,
     # Memoria personal
     "memoria_personal": True,
     "perfil_max_chars": 1600,

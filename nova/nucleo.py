@@ -43,6 +43,8 @@ RECIENTE = re.compile(r"\b(hoy|ahorita|actual(es|mente)?|[uú]ltim[oa]s?|recient
                       r"clima|cotizaci[oó]n|d[oó]lar|qui[eé]n gan[oó]|marcador|estreno|lanzamiento|sali[oó]|nueva versi[oó]n|"
                       r"20(2[5-9]|3\d)|esta semana|este (mes|a[nñ]o)|busca|investiga|googlea|en internet|en la web)\b", re.I)
 URL = re.compile(r"https?://[^\s<>\"']+")
+PASADO = re.compile(r"\b(te acuerdas|recuerdas|la otra vez|ayer|antier|hace (unos |un par de )?d[ií]as|la semana pasada|"
+                    r"(me )?dijiste|hablamos|platicamos|quedamos|lo de antes)\b", re.I)
 # «Piénsalo bien: …» manda esa pregunta al cerebro grande (otro equipo, más listo y más lento).
 PIENSALO = re.compile(r"^\s*(?:oye,?\s*)?(?:nova,?\s*)?(?:pi[eé]nsalo (?:bien|a fondo)|con (?:tu|el) cerebro grande|"
                       r"usa (?:tu|el) cerebro grande|cerebro grande)\s*[:,.]?\s*", re.I)
@@ -104,9 +106,13 @@ class Nova:
         self.observador = pantalla.Observador()
         self.herramientas.vision = bool(getattr(self.motor, "vision", False))
         self.indexando = False
-        # Retoma la conversación anterior: NOVA sabe de qué venían hablando aunque la hayas cerrado.
+        # Retoma la conversación si fue hace poco (la cerraste y la volviste a abrir); lo de días
+        # atrás se queda en la memoria, no en la plática, para que no se quede pegada en eso.
+        limite = time.time() - float(config.retomar_horas) * 3600
         for m in self.memoria.ultimos_mensajes(10):
-            self.historial.append({"role": "user" if m["rol"] == "usuario" else "assistant", "content": m["texto"]})
+            if m["fecha"] >= limite:
+                self.historial.append({"role": "user" if m["rol"] == "usuario" else "assistant", "content": m["texto"]})
+        self._ultimo_mensaje = time.time()
         self.ultima_actividad = time.monotonic()
         self.inicio_sesion_trabajo = time.monotonic()
         self._cerrojo = threading.Lock()
@@ -137,6 +143,9 @@ class Nova:
             return ""
         with self._cerrojo:
             self.ultima_actividad = time.monotonic()
+            if time.time() - self._ultimo_mensaje > float(self.config.retomar_horas) * 3600:
+                self.historial = []  # pasó mucho rato: empieza una plática nueva
+            self._ultimo_mensaje = time.time()
             if self.platica.pendiente:
                 platica.respuesta(self.platica, siguio=True)
             ctx = personalidad.contexto(texto)
@@ -146,7 +155,8 @@ class Nova:
                 rapida = orden_rapida(texto)
                 respuesta = self._orden_rapida(rapida, texto, por_voz) if rapida else None
                 if respuesta is None:
-                    respuesta = self._pensar_con_cerebro(texto, ctx) if PIENSALO.match(texto) else self._pensar(texto, ctx)
+                    usar_cerebro = PIENSALO.match(texto) or (self.cerebro and self.config.cerebro_auto and self.internet.activo)
+                    respuesta = self._pensar_con_cerebro(texto, ctx) if usar_cerebro else self._pensar(texto, ctx)
             except Exception as exc:  # noqa: BLE001 - NOVA explica el error en vez de caerse
                 respuesta = f"Algo falló de mi lado: {exc}"
                 self.bus.publicar({"tipo": "error", "texto": str(exc)})
@@ -223,8 +233,9 @@ class Nova:
             partes.append(f"- ({r.tipo}) {r.texto}")
         for k in self.memoria.buscar_conocimiento(texto, 3):
             partes.append(f"- (aprendido de {k['url']}, {dt.date.fromtimestamp(k['creado'])}) {k['tema']}: {k['texto'][:500]}")
-        for c in self.memoria.buscar_conversaciones(texto, 3):
-            partes.append(f"- (conversación {dt.date.fromtimestamp(c['fecha'])}, {c['rol']}) {c['texto'][:300]}")
+        if PASADO.search(texto):  # solo si hablas de algo que ya platicaron
+            for c in self.memoria.buscar_conversaciones(texto, 3):
+                partes.append(f"- (conversación del {dt.date.fromtimestamp(c['fecha'])}, {c['rol']}) {c['texto'][:300]}")
         return envolver("memoria", "\n".join(partes)) if partes else ""
 
     def _pensar_con_cerebro(self, texto: str, ctx: str) -> str:
@@ -232,7 +243,8 @@ class Nova:
         if not self.cerebro:
             self.bus.publicar({"tipo": "aviso", "texto": "Todavía no tengo cerebro grande configurado; lo pienso con mi modelo de siempre."})
             return self._pensar(pregunta, ctx)
-        self.bus.publicar({"tipo": "aviso", "texto": f"Lo pienso con mi cerebro grande ({self.cerebro.modelo}). Puede tardar unos minutos."})
+        if not self.config.cerebro_auto:
+            self.bus.publicar({"tipo": "aviso", "texto": f"Lo pienso con mi cerebro grande ({self.cerebro.modelo}). Puede tardar unos minutos."})
         try:
             return self._pensar(pregunta, ctx, motor=self.cerebro)
         except (RuntimeError, OSError) as exc:

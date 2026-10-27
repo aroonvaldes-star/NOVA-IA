@@ -235,10 +235,10 @@ class MotorLlama(Motor):
     def chat(self, mensajes, al_token=None, temperatura=0.6, max_tokens=1024) -> str:
         self.asegurar()
         cuerpo = json.dumps({
-            "model": "nova", "messages": mensajes, "stream": True,
+            "model": self._nombre_api(), "messages": mensajes, "stream": True,
             "temperature": temperatura, "max_tokens": max_tokens,
         }).encode()
-        peticion = urllib.request.Request(self.endpoint + "/v1/chat/completions", data=cuerpo,
+        peticion = urllib.request.Request(self._url_chat(), data=cuerpo,
                                           headers={"Content-Type": "application/json", **self._cabeceras()})
         texto = []
         with urllib.request.urlopen(peticion, timeout=600) as r:
@@ -262,6 +262,13 @@ class MotorLlama(Motor):
 
     def _cabeceras(self) -> dict:
         return {}
+
+    def _url_chat(self) -> str:
+        # Acepta la raíz del servidor (llama-server) o una base que ya termina en /v1 (OpenAI, Oracle…).
+        return self.endpoint + ("/chat/completions" if self.endpoint.endswith("/v1") else "/v1/chat/completions")
+
+    def _nombre_api(self) -> str:
+        return "nova"
 
     def embeddings(self, textos: list[str]) -> list[list[float]] | None:
         """Embeddings si el servidor los ofrece (llama-server --embedding). Si no, None."""
@@ -300,7 +307,12 @@ class MotorRemoto(MotorLlama):
     def _cabeceras(self) -> dict:
         return {"Authorization": f"Bearer {self.config.cerebro_clave}"} if self.config.cerebro_clave else {}
 
+    def _nombre_api(self) -> str:
+        return self.config.cerebro_api_modelo or "nova-cerebro"
+
     def _responde(self) -> bool:
+        if self.endpoint.endswith("/v1"):
+            return True  # servicios en la nube: sin /health; si fallan, la llamada lo dirá
         try:
             req = urllib.request.Request(self.endpoint + "/health", headers=self._cabeceras())
             with urllib.request.urlopen(req, timeout=4) as r:
