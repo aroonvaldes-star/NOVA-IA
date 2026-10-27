@@ -163,6 +163,8 @@ export class Orbe {
     this.cursor = { x: -1e4, y: -1e4 };
     this.anclado = false;
     this.ancla = null;
+    this.zona = null;  // {x, y, w, h}: espacio por el que flota (si no, toda la ventana)
+    this.escalaZona = 1;
 
     const u = (v) => ({ value: v });
     this.uniformes = {
@@ -306,24 +308,28 @@ export class Orbe {
   audio(nivel) { this.nivelAudio = Math.max(0, Math.min(1, nivel)); }
   moverCursor(x, y) { this.cursor.x = x; this.cursor.y = y; }
   anclar(activo, punto = null) { this.anclado = activo; this.ancla = punto; }
+  // Limita el vuelo a una zona (por ejemplo, junto a la conversación) y ajusta el tamaño.
+  limitar(zona = null, escala = 1) { this.zona = zona; this.escalaZona = escala; }
   posicion() { return { x: this.pos.x, y: this.pos.y, r: this.radioPx }; }
 
   // ------------------------------------------------------------- bucle
 
   _objetivoLibre(t) {
-    const f = this.fases, w = innerWidth, h = innerHeight;
+    const f = this.fases;
+    const z = this.zona || { x: 0, y: 0, w: innerWidth, h: innerHeight };
     // Suma de senos con frecuencias inconmensurables: trayectoria suave que no se repite.
     const nx = (Math.sin(t * 0.071 + f[0]) + Math.sin(t * 0.043 + f[1]) * 0.6 + Math.sin(t * 0.017 + f[2]) * 0.4) / 2;
     const ny = (Math.sin(t * 0.059 + f[3]) + Math.sin(t * 0.037 + f[4]) * 0.6 + Math.sin(t * 0.013 + f[5]) * 0.4) / 2;
-    const m = this.radioPx * 2 + 40;
-    return { x: w / 2 + nx * (w / 2 - m), y: h / 2 + ny * (h / 2 - m) };
+    const mx = Math.min(this.radioPx * 1.6 + 20, z.w / 2), my = Math.min(this.radioPx * 1.6 + 20, z.h / 2);
+    return { x: z.x + z.w / 2 + nx * (z.w / 2 - mx), y: z.y + z.h / 2 + ny * (z.h / 2 - my) };
   }
 
   _mover(t, dt) {
     const anclaPorEstado = this.nombreEstado !== 'reposo';
     let obj;
     if (this.anclado || anclaPorEstado || !this.libre) {
-      obj = this.ancla || { x: innerWidth / 2, y: innerHeight * 0.4 };
+      obj = this.ancla || (this.zona ? { x: this.zona.x + this.zona.w / 2, y: this.zona.y + this.zona.h / 2 }
+        : { x: innerWidth / 2, y: innerHeight * 0.4 });
     } else {
       obj = this._objetivoLibre(SIN_MOVIMIENTO ? t * 0.1 : t);
     }
@@ -371,7 +377,7 @@ export class Orbe {
     if (this.nombreEstado === 'hablando' && audio < 0.02) audio = 0.25 + 0.25 * Math.sin(t * 9) * Math.sin(t * 3.7); // sin audio real, late solo
 
     const respiro = 1 + Math.sin(t * 1.1) * 0.03 + audio * 0.12;
-    this.radioPx = RADIO_REPOSO_PX * this.p.escala * respiro;
+    this.radioPx = RADIO_REPOSO_PX * this.p.escala * this.escalaZona * respiro;
 
     this._mover(t, dt);
 

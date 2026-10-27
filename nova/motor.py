@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -134,6 +135,8 @@ class MotorLlama(Motor):
         self.binario = buscar_binario(config)
         self.ruta_modelo = buscar_modelo(config)
         self.modelo = self.ruta_modelo.name if self.ruta_modelo else ""
+        self.mmproj = buscar_mmproj(config, self.ruta_modelo)
+        self.vision = bool(self.mmproj)
         self._proceso: subprocess.Popen | None = None
         self._trabajo = None
         self._ultimo_uso = time.monotonic()
@@ -159,35 +162,58 @@ class MotorLlama(Motor):
                 return
             if not (self.config.manage_server and self.binario and self.ruta_modelo):
                 raise RuntimeError("No hay motor de IA listo: falta llama-server o un modelo .gguf.")
-            puerto = self.endpoint.rsplit(":", 1)[-1]
-            args = [
-                str(self.binario), "-m", str(self.ruta_modelo), "--host", "127.0.0.1", "--port", puerto,
-                "-c", str(self.config.context), "-ngl", str(self.config.gpu_layers), "--alias", "nova",
-            ]
-            log = open(self.config.rutas.estado / "llama-server.log", "ab")
-            self._proceso = subprocess.Popen(
-                args, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                creationflags=0x08000000 if sys.platform == "win32" else 0,
-            )
-            if sys.platform == "win32":
-                try:
-                    self._trabajo = _TrabajoWindows()
-                    self._trabajo.asignar(self._proceso)
-                except OSError:
-                    self._trabajo = None
-            limite = time.monotonic() + 120
-            while time.monotonic() < limite:
-                if self._proceso.poll() is not None:
-                    raise RuntimeError("llama-server se cerró al arrancar; revisa estado/llama-server.log")
-                if self._responde():
+            base, extras = self._argumentos()
+            # Si una versión vieja de llama-server no conoce algún extra, arranca sin ellos.
+            for intento, args in enumerate((base + extras, base) if extras else (base,)):
+                if self._arrancar(args):
                     break
-                time.sleep(0.5)
+                if intento == 0 and extras:
+                    self.vision = False
             else:
-                self.detener()
-                raise RuntimeError("llama-server no respondió en 2 minutos")
+                raise RuntimeError("llama-server se cerró al arrancar; revisa estado/llama-server.log")
             if not self._vigilante or not self._vigilante.is_alive():
                 self._vigilante = threading.Thread(target=self._vigilar, daemon=True)
                 self._vigilante.start()
+
+    def _argumentos(self) -> tuple[list[str], list[str]]:
+        puerto = self.endpoint.rsplit(":", 1)[-1]
+        base = [
+            str(self.binario), "-m", str(self.ruta_modelo), "--host", "127.0.0.1", "--port", puerto,
+            "-c", str(self.config.context), "-ngl", str(self.config.gpu_layers), "--alias", "nova",
+        ]
+        extras: list[str] = []
+        if self.config.kv_cache:
+            # Caché de contexto en 8 bits: cabe el doble de conversación en la misma memoria de video.
+            extras += ["-fa", "on", "-ctk", self.config.kv_cache, "-ctv", self.config.kv_cache]
+        if self.mmproj:
+            extras += ["--mmproj", str(self.mmproj), "--image-max-tokens", str(self.config.vision_max_tokens)]
+            if not self.config.vision_en_gpu:
+                extras.append("--no-mmproj-offload")
+        return base, extras
+
+    def _arrancar(self, args: list[str]) -> bool:
+        log = open(self.config.rutas.estado / "llama-server.log", "ab")
+        log.write(("\n--- " + time.strftime("%Y-%m-%d %H:%M:%S") + " " + " ".join(args[1:]) + "\n").encode())
+        log.flush()
+        self._proceso = subprocess.Popen(
+            args, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+            creationflags=0x08000000 if sys.platform == "win32" else 0,
+        )
+        if sys.platform == "win32":
+            try:
+                self._trabajo = _TrabajoWindows()
+                self._trabajo.asignar(self._proceso)
+            except OSError:
+                self._trabajo = None
+        limite = time.monotonic() + 180
+        while time.monotonic() < limite:
+            if self._proceso.poll() is not None:
+                return False
+            if self._responde():
+                return True
+            time.sleep(0.5)
+        self.detener()
+        raise RuntimeError("llama-server no respondió en 3 minutos")
 
     def _vigilar(self) -> None:
         while self._proceso and self._proceso.poll() is None:
@@ -269,8 +295,42 @@ def buscar_modelo(config: Config) -> Path | None:
         if carpeta.is_dir():
             modelos = sorted(m for m in carpeta.glob("*.gguf") if "mmproj" not in m.name.lower() and "embed" not in m.name.lower())
             if modelos:
+                # Con visión instalada, prefiere el modelo que tiene su proyector de imágenes.
+                if config.vision:
+                    for m in modelos:
+                        if buscar_mmproj(config, m):
+                            return m
                 return modelos[0]
     return None
+
+
+def buscar_mmproj(config: Config, modelo: Path | None) -> Path | None:
+    """El proyector de imágenes (mmproj) que acompaña al modelo, si lo hay: le da vista."""
+    if not modelo or not config.vision:
+        return None
+    if config.vision_mmproj:
+        p = Path(os.path.expandvars(config.vision_mmproj))
+        if not p.is_absolute():
+            p = config.rutas.modelos / p
+        return p if p.is_file() else None
+    candidatos = sorted(m for m in modelo.parent.glob("*.gguf") if "mmproj" in m.name.lower())
+    if not candidatos:
+        return None
+    clave = _clave_modelo(modelo.name)
+    for c in candidatos:
+        if clave and clave in _clave_modelo(c.name):
+            return c
+    # Proyectores con nombre genérico (mmproj-F16.gguf): solo si hay uno y el modelo es de visión.
+    if len(candidatos) == 1 and re.search(r"vl|vision|gemma-?3", modelo.name.lower()):
+        return candidatos[0]
+    return None
+
+
+def _clave_modelo(nombre: str) -> str:
+    """'Qwen3-VL-4B-Instruct-Q4_K_M.gguf' y 'mmproj-Qwen3VL-4B-Instruct-F16.gguf' -> 'qwen3vl4b'."""
+    plano = re.sub(r"[^a-z0-9]", "", nombre.lower().replace("mmproj", ""))
+    m = re.match(r"([a-z]+\d*(?:vl)?\d+b)", plano)
+    return m.group(1) if m else ""
 
 
 def es_gguf(ruta: Path) -> bool:

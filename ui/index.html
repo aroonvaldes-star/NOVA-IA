@@ -14,36 +14,30 @@
 <body class="{{NOVA_MODO}}">
 <canvas id="orbe" aria-label="NOVA"></canvas>
 
-<div id="subtitulos" class="flotante" aria-live="polite"></div>
 <div id="indicadores" class="flotante">
   <span id="ind-internet" hidden>🌐 internet</span>
+  <span id="ind-pantalla" hidden>👁 viendo tu pantalla</span>
   <span id="ind-privado" hidden>modo privado</span>
   <span id="ind-escucha" hidden><i class="punto"></i> escuchando</span>
   <span id="ind-offline" hidden>sin conexión</span>
 </div>
 
-<form id="entrada" class="flotante interactivo" autocomplete="off">
-  <button type="button" id="microfono" title="Mantén presionado para hablar">🎙</button>
-  <input id="texto" type="text" placeholder="Háblame o escribe… (Esc para esconder)" spellcheck="true">
-  <button type="submit" id="enviar" title="Enviar">➤</button>
-</form>
-
-<div id="tarjetas" class="interactivo"></div>
+<main id="charla" class="interactivo">
+  <div id="conversacion" role="log" aria-live="polite" aria-label="Conversación con NOVA"></div>
+  <form id="entrada" autocomplete="off">
+    <button type="button" id="microfono" title="Mantén presionado para hablar">🎙</button>
+    <input id="texto" type="text" placeholder="Háblame o escribe… (Esc para esconder)" spellcheck="true">
+    <button type="submit" id="enviar" title="Enviar">➤</button>
+  </form>
+</main>
 
 <template id="plantilla-confirmacion">
-  <section class="tarjeta confirmacion">
-    <header>Necesito tu confirmación</header>
+  <div class="msg confirmar">
+    <p class="aviso">Necesito tu confirmación</p>
     <pre class="descripcion"></pre>
-    <p class="codigo-linea">Código: <b class="codigo"></b> <small class="solo-clic" hidden>(solo con clic o teclado)</small></p>
-    <footer><button class="si">Confirmar</button><button class="no">Cancelar</button></footer>
-  </section>
-</template>
-
-<template id="plantilla-tarjeta">
-  <section class="tarjeta">
-    <header><span class="titulo">NOVA</span><span><button class="copiar" title="Copiar">⧉</button><button class="cerrar" title="Cerrar">✕</button></span></header>
-    <div class="cuerpo"></div>
-  </section>
+    <p class="codigo-linea">Código <b class="codigo"></b> <small class="solo-clic" hidden>(solo con clic o teclado)</small></p>
+    <p class="botones"><button class="si">Confirmar</button><button class="no">Cancelar</button></p>
+  </div>
 </template>
 </body>
 </html>

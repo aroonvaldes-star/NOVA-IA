@@ -30,6 +30,7 @@ class Resultado:
     origen: str = "herramienta"
     confirmacion: dict | None = None  # {"codigo", "descripcion", "solo_clic"}
     uso_internet: list[str] = field(default_factory=list)
+    imagen: str = ""  # data URL de una imagen para modelos con visión
 
 
 def envolver(origen: str, texto: str) -> str:
@@ -111,6 +112,7 @@ class CajaDeHerramientas:
         self.confirmaciones = confirmaciones
         self.urls_permitidas: set[str] = set()
         self.leyo_privado = False
+        self.vision = False  # lo ajusta el núcleo según el motor
 
     def nueva_tarea(self, mensaje_usuario: str) -> None:
         """Al empezar un turno: las URLs que escribiste tú quedan permitidas."""
@@ -149,7 +151,27 @@ class CajaDeHerramientas:
             self.urls_permitidas.add(r.url)
         texto = "\n".join(f"[{i}] {r.titulo}\n{r.url}\n{r.fragmento}" for i, r in enumerate(resultados, 1))
         self.memoria.aprender(consulta, " ".join(r.fragmento for r in resultados)[:2000], resultados[0].url)
-        return Resultado(texto, "web", uso_internet=[r.url for r in resultados])
+        usadas = [r.url for r in resultados]
+        # Con solo los fragmentos las respuestas quedan pobres: lee también las primeras páginas.
+        paginas = self._leer_varias([r.url for r in resultados[: int(self.config.internet_leer_paginas)]])
+        for i, (url, pagina) in enumerate(paginas, 1):
+            texto += f"\n\n--- Página {i}: {pagina['titulo'] or url}\n{pagina['url']}\n{pagina['texto'][:1800]}"
+            self.memoria.aprender(pagina["titulo"] or consulta, pagina["texto"][:4000], pagina["url"])
+        return Resultado(texto, "web", uso_internet=usadas)
+
+    def _leer_varias(self, urls: list[str]) -> list[tuple[str, dict]]:
+        if not urls:
+            return []
+        from concurrent.futures import ThreadPoolExecutor
+
+        def leer(url: str):
+            try:
+                return url, self.internet.leer(url, max_chars=4000)
+            except (URLNoPermitida, OSError, ConnectionError, ValueError):
+                return url, None
+
+        with ThreadPoolExecutor(max_workers=len(urls)) as grupo:
+            return [(u, p) for u, p in grupo.map(leer, urls) if p and p.get("texto")]
 
     def h_leer_web(self, url: str) -> Resultado:
         if not self.internet.activo:
@@ -182,6 +204,32 @@ class CajaDeHerramientas:
         for d in self.memoria.buscar_documentos(consulta, 5):
             partes.append(f"[archivo {d['ruta']}] {d['fragmento']}")
         return Resultado("\n".join(partes) or "No encontré nada relacionado en mi memoria.", "memoria")
+
+    def h_buscar_archivos(self, nombre: str) -> Resultado:
+        rutas = self.memoria.buscar_archivos(nombre)
+        if not rutas:
+            return Resultado("No encontré archivos con ese nombre en las carpetas que conozco. "
+                             "El usuario puede pedirme «conoce la carpeta …» para que la revise.", "archivos")
+        return Resultado("\n".join(rutas), "archivos")
+
+    # --- pantalla
+
+    def h_ver_pantalla(self, pregunta: str = "") -> Resultado:
+        from . import pantalla
+
+        try:
+            captura = pantalla.capturar(int(self.config.pantalla_max_ancho))
+        except (RuntimeError, OSError) as exc:
+            return Resultado(f"No pude ver la pantalla: {exc}", "pantalla")
+        self.leyo_privado = True  # lo que hay en tu pantalla es tuyo: no sale a internet sin tu clic
+        ventana = f"Ventana en uso: {captura.ventana}." if captura.ventana else ""
+        if self.vision:
+            return Resultado(f"{ventana} Captura de {captura.ancho}x{captura.alto} adjunta.", "pantalla", imagen=captura.data_url())
+        texto = pantalla.leer_texto(captura)
+        if not texto:
+            return Resultado(f"{ventana} Tomé la captura, pero no tengo vista ni pude leer texto en ella "
+                             "(el OCR de Windows necesita el paquete de idioma).", "pantalla")
+        return Resultado(f"{ventana}\nTexto que se lee en la pantalla:\n{texto[:6000]}", "pantalla")
 
     # --- archivos
 

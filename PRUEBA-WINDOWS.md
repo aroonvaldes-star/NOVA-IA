@@ -1,10 +1,22 @@
 # Primera prueba de NOVA en tu Windows
 
+## Actualizar a la 0.2 (si ya tenías NOVA instalada)
+
+1. Cierra NOVA.
+2. Descomprime `NOVA-0.2.zip` en una carpeta nueva, por ejemplo `N:\NOVORA_WORKSPACE\NOVA IA\NOVA-0.2`.
+3. En PowerShell, dentro de esa carpeta `NOVA`: `Get-ChildItem -Recurse | Unblock-File` y luego `.\instalar.bat`.
+4. El instalador reutiliza lo que ya bajaste y solo agrega el **modelo con vista** (unos 3.3 GB). Los accesos directos pasan a la carpeta nueva; la vieja ya la puedes borrar.
+5. Abre NOVA y prueba lo nuevo:
+   - `conoce la carpeta N:\NOVORA_WORKSPACE` → te avisa cuando termine de leerla. Luego pregúntale algo de tus proyectos.
+   - Abre VS Code con NOVORA-LINK, vuelve a NOVA y escribe `mira mi pantalla` → debe decir qué estás haciendo.
+   - `¿Cuál es el precio del dólar hoy?` → busca antes de contestar y abajo muestra las páginas.
+   - Cierra y vuelve a abrir NOVA → la conversación sigue ahí y NOVA se acuerda de lo que hablaron.
+
 Unos 20 a 40 minutos, casi todo es la descarga del modelo (2.5 GB). Ve marcando cada paso; si algo sale distinto, mándame el archivo `diagnostico.txt` (paso 3) y lo que viste.
 
 ## 1. Pon la carpeta en su lugar
 
-1. Descomprime `NOVA-0.1.1.zip` en una carpeta que no vayas a mover, por ejemplo `Documentos\NOVA`.
+1. Descomprime `NOVA-0.2.zip` en una carpeta que no vayas a mover, por ejemplo `Documentos\NOVA`.
 2. Si Windows marca los archivos como «descargados de internet»: clic derecho en `instalar.bat` → Propiedades → casilla **Desbloquear** → Aceptar.
 
 ## 2. Instala con doble clic

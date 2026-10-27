@@ -18,12 +18,14 @@ Reglas:
 
 from __future__ import annotations
 
+import html
 import os
 import re
 import sqlite3
 import threading
 import time
 import unicodedata
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -143,8 +145,10 @@ class Recuerdo:
 
 EXT_TEXTO = {".txt", ".md", ".py", ".cs", ".xaml", ".java", ".kt", ".kts", ".js", ".ts", ".tsx", ".jsx", ".json",
              ".csv", ".xml", ".html", ".css", ".c", ".cpp", ".h", ".hpp", ".rs", ".go", ".rb", ".php", ".sql",
-             ".yml", ".yaml", ".toml", ".ini", ".cfg", ".gradle", ".sln", ".csproj", ".ps1", ".sh", ".bat", ".log"}
-CARPETAS_OMITIDAS = {"node_modules", "bin", "obj", "packages", "build", "dist", "target", "__pycache__", "venv", "appdata"}
+             ".yml", ".yaml", ".toml", ".ini", ".cfg", ".gradle", ".sln", ".csproj", ".ps1", ".sh", ".bat", ".log",
+             ".docx", ".vue", ".svelte", ".dart", ".swift", ".lua", ".r", ".tex", ".rtf"}
+CARPETAS_OMITIDAS = {"node_modules", "bin", "obj", "packages", "build", "dist", "target", "__pycache__", "venv", "appdata",
+                     "out", "library", "temp", "tmp", "cache", ".venv", "site-packages", "vendor"}
 
 
 class Memoria:
@@ -331,17 +335,27 @@ class Memoria:
 
     # ----------------------------------------------------------- documentos
 
-    def indexar(self, carpetas: Iterable[str], revisar=None, max_bytes: int = 200_000) -> dict:
-        """Indexa archivos de texto. `revisar(ruta)->ChequeoRuta` aplica la política de rutas."""
-        nuevos = omitidos = 0
+    def indexar(self, carpetas: Iterable[str], revisar=None, max_bytes: int = 200_000, max_archivos: int = 50_000,
+                detener=None) -> dict:
+        """Indexa archivos de texto. `revisar(ruta)->ChequeoRuta` aplica la política de rutas.
+
+        Los archivos que no cambiaron (misma fecha y tamaño) no se vuelven a leer, así
+        que correrlo seguido es barato. `detener()` permite cortar a la mitad.
+        """
+        nuevos = omitidos = vistos = 0
         for carpeta in carpetas:
+            if detener and detener():
+                break
             if revisar and not revisar(carpeta).ok:
                 omitidos += 1
                 continue
             for raiz, dirs, archivos in os.walk(carpeta, followlinks=False):
                 dirs[:] = [d for d in dirs if not d.startswith(".") and d.lower() not in CARPETAS_OMITIDAS
                            and not os.path.islink(os.path.join(raiz, d))]
+                if vistos >= max_archivos or (detener and detener()):
+                    break
                 for nombre in archivos:
+                    vistos += 1
                     ruta = os.path.join(raiz, nombre)
                     if nombre.startswith(".") or Path(nombre).suffix.lower() not in EXT_TEXTO or os.path.islink(ruta):
                         continue
@@ -364,9 +378,8 @@ class Memoria:
             if fila and fila["mtime"] == st.st_mtime and fila["tam"] == st.st_size:
                 return False
             try:
-                with open(ruta, encoding="utf-8", errors="replace") as f:
-                    texto = f.read()
-            except OSError:
+                texto = _leer_texto(ruta)
+            except (OSError, ValueError, zipfile.BadZipFile):
                 return False
             if fila:
                 self._db.execute("DELETE FROM trozos WHERE doc=?", (fila["id"],))
@@ -387,6 +400,24 @@ class Memoria:
             filas = self._db.execute(
                 "SELECT ruta, snippet(trozos, 2, '«', '»', '…', 24) AS fragmento, texto FROM trozos WHERE trozos MATCH ? "
                 "ORDER BY bm25(trozos) LIMIT ?", (q, limite)).fetchall()
+        return [dict(f) for f in filas]
+
+    def buscar_archivos(self, nombre: str, limite: int = 20) -> list[str]:
+        """Rutas indexadas cuyo nombre o carpeta contiene todas las palabras dadas."""
+        palabras = [p for p in re.split(r"[\s*]+", nombre.strip()) if p][:5]
+        if not palabras:
+            return []
+        filtro = " AND ".join("ruta LIKE ? ESCAPE '!'" for _ in palabras)
+        valores = ["%" + p.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%" for p in palabras]
+        with self._cerrojo:
+            filas = self._db.execute(f"SELECT ruta FROM documentos WHERE disponible=1 AND {filtro} ORDER BY mtime DESC LIMIT ?",
+                                     (*valores, limite)).fetchall()
+        return [f["ruta"] for f in filas]
+
+    def documentos_recientes(self, limite: int = 8) -> list[dict]:
+        with self._cerrojo:
+            filas = self._db.execute("SELECT ruta, mtime FROM documentos WHERE disponible=1 ORDER BY mtime DESC LIMIT ?",
+                                     (limite,)).fetchall()
         return [dict(f) for f in filas]
 
     def estado(self) -> dict:
@@ -434,6 +465,17 @@ class Memoria:
         with self._cerrojo:
             self._db.execute("INSERT INTO ajustes(clave, valor) VALUES (?,?) ON CONFLICT(clave) DO UPDATE SET valor=excluded.valor", (clave, valor))
             self._db.commit()
+
+
+def _leer_texto(ruta: str) -> str:
+    """Texto de un archivo; los .docx se leen de su XML interno."""
+    if ruta.lower().endswith(".docx"):
+        with zipfile.ZipFile(ruta) as z:
+            xml = z.read("word/document.xml").decode("utf-8", "replace")
+        xml = re.sub(r"</w:p>", "\n", xml)
+        return html.unescape(re.sub(r"<[^>]+>", "", xml))
+    with open(ruta, encoding="utf-8", errors="replace") as f:
+        return f.read()
 
 
 def _trocear(texto: str, tam: int = 1200, solape: int = 150) -> list[str]:

@@ -29,7 +29,7 @@ MAX_CUERPO = 25 * 1024 * 1024
 
 
 # Lo único que el celular puede pedir (además de la página y el emparejamiento).
-RUTAS_CELULAR = {"/api/eventos", "/api/estado", "/api/tareas", "/api/notas", "/api/mensaje", "/api/confirmar",
+RUTAS_CELULAR = {"/api/eventos", "/api/estado", "/api/conversacion", "/api/tareas", "/api/notas", "/api/mensaje", "/api/confirmar",
                  "/api/cancelar", "/api/voz/stt", "/api/voz/tts"}
 
 
@@ -115,6 +115,8 @@ def crear_servidor(nova: Nova, puerto: int | None = None, carpeta_ui: Path = UI,
                     return self._json({"error": "sin autorización"}, 401)
                 if ruta == "/api/estado":
                     return self._json(nova.estado())
+                if ruta == "/api/conversacion":
+                    return self._json(nova.conversacion())
                 if ruta == "/api/yo":
                     return self._json([r.__dict__ for r in nova.memoria.recuerdos(limite=500)])
                 if ruta == "/api/tareas":

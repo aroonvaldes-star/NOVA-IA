@@ -36,12 +36,28 @@ def test_usa_herramienta_y_no_muestra_accion(crear_nova):
 
 
 def test_si_no_sabe_busca_en_seguida(crear_nova, internet_falso):
-    nova = crear_nova(["FINAL: No sé cuál es la última versión.", "FINAL: La última es b6000 [1]."])
-    respuesta = nova.procesar("¿cuál es la última versión de llama.cpp?")
-    assert respuesta == "La última es b6000 [1]."
-    assert internet_falso.busquedas == ["¿cuál es la última versión de llama.cpp?"]
+    nova = crear_nova(["FINAL: No sé qué es eso.", "FINAL: Es llama.cpp b6000 [1]."])
+    respuesta = nova.procesar("¿qué es llama.cpp?")
+    assert respuesta == "Es llama.cpp b6000 [1]."
+    assert internet_falso.busquedas == ["¿qué es llama.cpp?"]
     # Lo aprendido queda guardado para usarlo sin conexión
     assert nova.memoria.buscar_conocimiento("llama.cpp versión")
+
+
+def test_pregunta_de_algo_reciente_busca_antes_de_contestar(crear_nova, internet_falso):
+    nova = crear_nova(["FINAL: La última es b6000 [1]."])
+    assert nova.procesar("Oye NOVA, ¿cuál es la última versión de llama.cpp?") == "La última es b6000 [1]."
+    assert internet_falso.busquedas == ["cuál es la última versión de llama.cpp"]
+    # Además de los resultados, leyó la primera página para responder con detalle
+    assert internet_falso.lecturas == ["https://github.com/ggml-org/llama.cpp/releases"]
+    enviado = json.dumps(nova.motor.recibidos[0], ensure_ascii=False)
+    assert "b6000" in enviado and "Contenido real" in enviado
+
+
+def test_no_dice_que_no_tiene_internet(crear_nova, internet_falso):
+    nova = crear_nova(["FINAL: No tengo acceso a internet para eso.", "FINAL: Encontré b6000 [1]."])
+    assert nova.procesar("¿qué opinan de llama.cpp?") == "Encontré b6000 [1]."
+    assert internet_falso.busquedas
 
 
 def test_sin_internet_no_busca(crear_nova, internet_falso):
@@ -76,10 +92,11 @@ def test_url_inventada_pide_confirmacion(crear_nova, internet_falso):
     assert internet_falso.lecturas == []
 
 
-def test_url_escrita_por_el_usuario_se_lee(crear_nova, internet_falso):
-    nova = crear_nova(['ACCION: {"herramienta": "leer_web", "args": {"url": "https://ejemplo.com/a"}}', "FINAL: Ok."])
+def test_url_escrita_por_el_usuario_se_lee_antes_de_pensar(crear_nova, internet_falso):
+    nova = crear_nova(["FINAL: Ok."])
     nova.procesar("resume https://ejemplo.com/a")
     assert internet_falso.lecturas == ["https://ejemplo.com/a"]
+    assert "leer_web" in json.dumps(nova.motor.recibidos[0], ensure_ascii=False)
 
 
 def test_escribir_archivo_con_confirmacion(crear_nova, tmp_path, monkeypatch):

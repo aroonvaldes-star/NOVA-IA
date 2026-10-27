@@ -2,7 +2,7 @@
 
 NOVA es una asistente de inteligencia artificial que vive en tu computadora. Es un proyecto propio e independiente: tiene su motor, su memoria, su voz, su personalidad y su avatar, un orbe holográfico que flota libre por tu escritorio. Funciona sin internet y, cuando hay conexión y no sabe algo, lo busca en seguida.
 
-> **Estado: versión 0.1.1 (MVP).** El núcleo, la memoria, la política de seguridad, internet, la conexión con el celular y el orbe están hechos y probados en Linux (196 pruebas automáticas y prueba del orbe en Chromium). En un Windows real todavía **no se ha probado nada**, ni con un modelo de lenguaje real: ver [Pendiente de verificar](#pendiente-de-verificar).
+> **Estado: versión 0.2.0.** Ya se instaló y abrió en la PC de Aroon (Windows 11, RTX 3050). La 0.2 agrega la conversación junto al orbe, búsqueda en internet antes de contestar, ver la pantalla y conocer tus carpetas; está probada en Linux (213 pruebas automáticas y la interfaz en Chromium), falta probarla en Windows con el modelo real: ver [Pendiente de verificar](#pendiente-de-verificar).
 
 ![Estados del orbe: procesando, buscando, hablando y activa en tecnología](docs/capturas/estados.png)
 
@@ -14,6 +14,9 @@ NOVA es una asistente de inteligencia artificial que vive en tu computadora. Es 
 | **Personalidad** | Cálida, mexicana, directa y honesta de que es una IA. Editable en `personalidad.md`. |
 | **Conciencia de sí misma** | En cada respuesta sabe qué versión es, qué modelo usa, si hay internet, qué voz tiene y qué recuerda. Recuerda cuándo «nació». |
 | **Memoria de ti** | Quién eres, cómo hablas, gustos, proyectos, momentos y preferencias. Aprende por reglas al instante («me llamo…», «recuerda que…») y con el modelo cada 10 mensajes. «¿Qué sabes de mí?», «olvida lo de…», «esto no lo recuerdes» (modo privado). Nunca guarda contraseñas, claves, tarjetas ni códigos. |
+| **Conversación junto al orbe** | Lo que se dicen aparece al lado del orbe, sin recuadros; lo viejo se desvanece y vuelves a ello con la barra. Al reabrir, la conversación sigue y NOVA la tiene en cuenta. |
+| **Ve tu pantalla** | «Mira mi pantalla» o «¿qué ves?»: captura la pantalla (escondiendo su ventana un instante) y la mira con el modelo con vista (Qwen3-VL 4B) o lee su texto con el OCR de Windows. Siempre sabe en qué ventana estás trabajando. |
+| **Conoce tus archivos** | Lee Documentos y Escritorio, más las carpetas que le pidas («conoce la carpeta N:\\…»): texto, código y Word. Usa lo relevante como contexto y encuentra archivos por nombre. |
 | **Aprende de internet** | Si responde «no sé» y hay conexión, busca y vuelve a responder citando fuentes. Lo que aprende queda guardado para usarlo sin conexión. |
 | **Herramientas** | Buscar y leer en la web, buscar en su memoria y en tus documentos indexados, leer y listar archivos de todas tus unidades, proponer escribir archivos, órdenes (git, dotnet…), calculadora, notas, tareas y discos. |
 | **Seguridad** | Nunca corre como administrador. Nada de formatear, particionar, arranque, BitLocker, registro ni borrado masivo. Lo que cambia algo se confirma con un código de 4 cifras que solo aparece en pantalla. Páginas, archivos y pantalla son datos, nunca órdenes. |
@@ -98,6 +101,8 @@ python -m pytest
 Lo que no se ha podido comprobar todavía, en orden de importancia:
 
 1. **Con un modelo real**: que un modelo de 3–4B siga bien el formato `ACCION:/FINAL:` y la velocidad en la RTX 3050.
+1. **La vista (0.2)**: que Qwen3-VL 4B con su proyector quepa en 4 GB (el proyector va en el procesador) y que siga las herramientas tan bien como el modelo de texto. Si no, `"vision": false` en `config.json` vuelve al modelo de texto y NOVA usa el OCR de Windows.
+1. **Captura y OCR en Windows (0.2)**: escritos con la API de Windows sin poder ejecutarlos aquí.
 2. **El envoltorio de escritorio en Windows**: el código pasa la revisión de tipos de Rust para Windows (`cargo check --target x86_64-pc-windows-msvc`), pero no se ha ejecutado. Falta ver la transparencia de la ventana, el paso de clics y los atajos.
 3. **Búsqueda en DuckDuckGo**: el lector de resultados está probado con HTML de ejemplo; si DuckDuckGo bloquea las consultas, usa una instancia de SearXNG (`internet_searxng_url`).
 4. **Voz**: los argumentos de `whisper-cli` y `piper` según las versiones que instales.

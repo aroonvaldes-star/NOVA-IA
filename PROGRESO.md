@@ -1,6 +1,6 @@
 # NOVA: lo que llevamos
 
-Resumen al 27 de octubre de 2026. Versión actual: **0.1.1**.
+Resumen al 27 de octubre de 2026. Versión actual: **0.2.0**.
 
 ## 1. Qué es NOVA y qué decidimos
 
@@ -66,24 +66,36 @@ Hice un instalador de doble clic (`instalar.bat`, que llama a `instalar.ps1`). I
 | 3 | Error en «x64» y en «Motor» en la línea 1 | El archivo suelto que te mandé por el chat llegó con un carácter invisible al inicio. | El instalador ahora va solo en caracteres básicos y siempre te lo mando dentro del zip. |
 | 4 | «Se recibió un EOF inesperado» al consultar GitHub | La respuesta de GitHub era muy grande y se cortó. | Pide menos versiones, reintenta 3 veces y usa `curl` de respaldo. |
 
-En el intento 4 ya pasaron bien Python, el entorno de NOVA y la detección de tu tarjeta (RTX 3050 Laptop, controlador 616.92, 4096 MiB).
+Con el arreglo del intento 4 la instalación terminó y NOVA abrió en tu PC (RTX 3050 Laptop, controlador 616.92, 4096 MiB).
 
-## 6. Dónde estamos
+## 6. La 0.2, después de tu primera prueba
 
-**Pendiente de ti:** bajar otra vez `NOVA-0.1.1.zip`, reemplazar `instalar.ps1` en `N:\NOVORA_WORKSPACE\NOVA IA\NOVA-0.1.1\NOVA`, correr `Get-ChildItem -Recurse | Unblock-File` y luego `.\instalar.bat`. Me pegas lo que salga.
+La 0.1.1 ya se instaló y abrió en tu PC. Me dijiste que los recuadros estorbaban, que las respuestas eran demasiado largas y que NOVA no tenía internet como querías, ni veía tu pantalla, ni conocía tus archivos. La 0.2 cambia eso:
+
+- **Conversación en el mismo espacio que el orbe.** Sin recuadros: el orbe flota a la izquierda y la plática a la derecha. Los mensajes viejos se desvanecen y vuelves a ellos con la barra. Al reabrir, la conversación sigue ahí y NOVA la recuerda.
+- **Respuestas cortas.** De 1 a 3 frases salvo que pidas detalle.
+- **Internet de verdad.** Si la pregunta es de algo reciente (precios, versiones, noticias, «hoy», «último»…), busca antes de contestar y lee las primeras páginas, no solo los resúmenes. Si le pegas un enlace, lo lee. Si aun así dice que no sabe o que «no tiene internet», busca en seguida. Las páginas consultadas aparecen bajo la respuesta.
+- **Ve tu pantalla.** «Mira mi pantalla» o «¿qué ves?»: esconde su ventana un instante, toma la captura y la mira con un modelo con vista (Qwen3-VL 4B, lo baja el instalador) o lee el texto con el OCR de Windows. Además siempre sabe en qué ventana estás (por ejemplo, el archivo abierto en VS Code). Lo que ve en tu pantalla no sale a internet sin tu clic.
+- **Conoce tus archivos.** Lee Documentos y Escritorio, y las carpetas que le pidas: «conoce la carpeta N:\NOVORA_WORKSPACE». Lee texto, código y Word (no binarios ni node_modules, bin, obj…), se actualiza cada 30 minutos, usa lo relevante para contestar y encuentra archivos por nombre.
+- **Más memoria de conversación.** El contexto sube a 8192 con la caché en 8 bits, para que quepa en tus 4 GB de video.
+
+## 7. Dónde estamos
+
+**Pendiente de ti:** actualizar a la 0.2 con `NOVA-0.2.zip` (sección «Actualizar a la 0.2» de `PRUEBA-WINDOWS.md`) y probar lo nuevo.
 
 ### Lo que todavía no se ha comprobado
 
-- El instalador completo en tu PC (aquí no hay Windows ni pude ejecutar PowerShell; avanza paso por paso con tus pruebas).
+- La parte nueva del instalador (modelo con vista).
+- La captura de pantalla y el OCR en Windows, y que el modelo con vista quepa en 4 GB y siga bien las herramientas.
 - NOVA con el modelo real: velocidad, si sigue el formato de herramientas y cuánta memoria de video usa.
 - La búsqueda en DuckDuckGo en vivo (desde aquí está bloqueada).
 - La voz y el oído en tu equipo.
 - El orbe flotante de escritorio (Tauri) funcionando de verdad.
 - La conexión con el celular en tu red.
 
-## 7. Siguientes pasos
+## 8. Siguientes pasos
 
-1. Terminar la instalación y mandarme `%LOCALAPPDATA%\NOVA\estado\diagnostico.txt`.
+1. Actualizar a la 0.2 y mandarme `%LOCALAPPDATA%\NOVA\estado\diagnostico.txt`.
 2. Hacer las 9 pruebas dentro de NOVA y la del celular (`PRUEBA-WINDOWS.md`, secciones 4 y 5).
 3. Ajustar según lo que salga: modelo, contexto o lo que falle.
 4. Compilar en tu PC el orbe flotante de escritorio (`.exe` de Tauri).

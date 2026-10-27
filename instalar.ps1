@@ -5,7 +5,8 @@
 #   1. Busca Python 3.11+ (si falta, lo instala para tu usuario con winget).
 #   2. Crea un entorno propio en %LOCALAPPDATA%\NOVA\venv e instala NOVA.
 #   3. Descarga llama.cpp (CUDA 12 si tienes NVIDIA, si no Vulkan) a %LOCALAPPDATA%\NOVA\llama.
-#   4. Descarga el modelo (Qwen3 4B Instruct, Q4_K_M, unos 2.5 GB) a %LOCALAPPDATA%\NOVA\models.
+#   4. Descarga el modelo (Qwen3 4B Instruct, Q4_K_M, unos 2.5 GB) a %LOCALAPPDATA%\NOVA\models,
+#      y el modelo con vista (Qwen3-VL 4B Instruct + su proyector, unos 3.3 GB) para ver tu pantalla.
 #   5. Descarga el oido (whisper.cpp + modelo small) y la voz (Piper + voz es_MX).
 #   6. Crea los accesos directos "NOVA" en el menu Inicio y el escritorio (Ctrl+Alt+N).
 #   7. Corre `nova diagnostico` y abre NOVA.
@@ -15,12 +16,14 @@
 # Opciones:
 #   -Motor cuda|vulkan|cpu   fuerza una variante de llama.cpp (por defecto la detecta)
 #   -SinModelo               no descarga el modelo
+#   -SinVista                no descarga el modelo con vista (NOVA leera tu pantalla solo con OCR)
 #   -SinVoz                  no descarga whisper.cpp ni Piper
 #   -SinAbrir                no abre NOVA al terminar
 
 param(
     [ValidateSet('auto', 'cuda', 'vulkan', 'cpu')][string]$Motor = 'auto',
     [switch]$SinModelo,
+    [switch]$SinVista,
     [switch]$SinVoz,
     [switch]$SinAbrir
 )
@@ -243,6 +246,44 @@ if (-not $SinModelo) {
         Write-Host "   Modelo: $nombre (unos 2.5 GB; puede tardar)"
         Descargar $url (Join-Path $modelos $nombre) (Huella-HuggingFace $url)
     }
+}
+
+# ------------------------------------------------------------------ 4b. Vista
+
+if (-not $SinModelo -and -not $SinVista) {
+    Paso 'Vista (modelo que ve imagenes y tu pantalla)'
+    try {
+        $modelos = Join-Path $Datos 'models'
+        New-Item -ItemType Directory -Force -Path $modelos | Out-Null
+        $listo = Get-ChildItem $modelos -Filter 'mmproj-*.gguf' -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($listo) {
+            Bien "Ya tienes vista: $($listo.Name)"
+        } else {
+            $repo = $null
+            $archivos = @()
+            foreach ($r in @('Qwen/Qwen3-VL-4B-Instruct-GGUF', 'unsloth/Qwen3-VL-4B-Instruct-GGUF', 'ggml-org/Qwen3-VL-4B-Instruct-GGUF')) {
+                try {
+                    $info = Invoke-RestMethod -Uri "https://huggingface.co/api/models/$r" -Headers $Agente -TimeoutSec 30
+                    $archivos = @($info.siblings | ForEach-Object { $_.rfilename })
+                    if ($archivos.Count -gt 0) { $repo = $r; break }
+                } catch { }
+            }
+            if (-not $repo) { throw 'no encontre el modelo Qwen3-VL 4B en Hugging Face' }
+            $gguf = $archivos | Where-Object { $_ -match 'Q4_K_M\.gguf$' -and $_ -notmatch 'mmproj' } | Select-Object -First 1
+            $proy = $archivos | Where-Object { $_ -match 'mmproj.*Q8_0\.gguf$' } | Select-Object -First 1
+            if (-not $proy) { $proy = $archivos | Where-Object { $_ -match 'mmproj.*F16\.gguf$' } | Select-Object -First 1 }
+            if (-not $gguf -or -not $proy) { throw "en $repo no encontre el modelo Q4_K_M o su proyector" }
+            $base = "https://huggingface.co/$repo/resolve/main"
+            $nombreModelo = Split-Path $gguf -Leaf
+            Write-Host "   Modelo con vista: $nombreModelo de $repo (unos 3.3 GB con su proyector; puede tardar)"
+            Descargar "$base/$gguf" (Join-Path $modelos $nombreModelo) (Huella-HuggingFace "$base/$gguf")
+            # El proyector se guarda con el nombre del modelo para que NOVA sepa que van juntos.
+            $tipo = if ($proy -match 'Q8_0') { 'Q8_0' } else { 'F16' }
+            $nombreProy = 'mmproj-' + [IO.Path]::GetFileNameWithoutExtension($nombreModelo) + "-$tipo.gguf"
+            Descargar "$base/$proy" (Join-Path $modelos $nombreProy) (Huella-HuggingFace "$base/$proy")
+            Bien 'NOVA ya puede ver imagenes y tu pantalla'
+        }
+    } catch { Aviso "No se instalo la vista: $_. NOVA igual puede leer el texto de tu pantalla (OCR de Windows)." }
 }
 
 # ------------------------------------------------------------------- 5. Voz

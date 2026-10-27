@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import queue
 import re
 import sys
@@ -23,7 +24,7 @@ import time
 import uuid
 from typing import Any, Callable
 
-from . import __version__, aprendizaje, platica, personalidad
+from . import __version__, aprendizaje, pantalla, platica, personalidad, politica
 from .config import Config
 from .celular import Emparejador
 from .confirmaciones import Confirmaciones
@@ -34,7 +35,14 @@ from .motor import Motor, MotorSimulado, elegir
 from .voz import Voz, orden_rapida, para_hablar
 
 NO_SABE = re.compile(r"\b(no (lo )?s[eé]\b|no tengo (esa )?informaci[oó]n|no estoy segur[ao]|no conozco|"
-                     r"no tengo datos|no puedo saber|mi conocimiento (llega|tiene)|no dispongo)", re.I)
+                     r"no tengo datos|no puedo saber|mi conocimiento (llega|tiene)|no dispongo|"
+                     r"no tengo acceso a (internet|la web|informaci[oó]n)|no puedo (navegar|buscar|acceder)|"
+                     r"en tiempo real|fecha de corte|[uú]ltima actualizaci[oó]n de mis datos)", re.I)
+# Preguntas que dependen de datos recientes: NOVA busca antes de contestar.
+RECIENTE = re.compile(r"\b(hoy|ahorita|actual(es|mente)?|[uú]ltim[oa]s?|reciente(s|mente)?|noticias?|precio|cu[aá]nto (cuesta|vale)|"
+                      r"clima|cotizaci[oó]n|d[oó]lar|qui[eé]n gan[oó]|marcador|estreno|lanzamiento|sali[oó]|nueva versi[oó]n|"
+                      r"20(2[5-9]|3\d)|esta semana|este (mes|a[nñ]o)|busca|investiga|googlea|en internet|en la web)\b", re.I)
+URL = re.compile(r"https?://[^\s<>\"']+")
 ACCION = re.compile(r"^\s*ACCI[OÓ]N\s*:\s*(\{.*\})", re.S | re.I)
 FINAL = re.compile(r"^\s*FINAL\s*:\s*", re.I)
 
@@ -89,6 +97,12 @@ class Nova:
         self.historial: list[dict] = []
         self.mensajes_sin_extraer: list[str] = []
         self.platica = platica.EstadoPlatica()
+        self.observador = pantalla.Observador()
+        self.herramientas.vision = bool(getattr(self.motor, "vision", False))
+        self.indexando = False
+        # Retoma la conversación anterior: NOVA sabe de qué venían hablando aunque la hayas cerrado.
+        for m in self.memoria.ultimos_mensajes(10):
+            self.historial.append({"role": "user" if m["rol"] == "usuario" else "assistant", "content": m["texto"]})
         self.ultima_actividad = time.monotonic()
         self.inicio_sesion_trabajo = time.monotonic()
         self._cerrojo = threading.Lock()
@@ -124,6 +138,7 @@ class Nova:
             ctx = personalidad.contexto(texto)
             self._estado("activa", ctx)
             try:
+                self.herramientas.nueva_tarea(texto)
                 rapida = orden_rapida(texto)
                 respuesta = self._orden_rapida(rapida, texto, por_voz) if rapida else None
                 if respuesta is None:
@@ -148,8 +163,58 @@ class Nova:
                 pendientes, self.mensajes_sin_extraer = self.mensajes_sin_extraer, []
                 threading.Thread(target=aprendizaje.extraer_con_modelo, args=(self.motor, self.memoria, pendientes), daemon=True).start()
 
+    def conversacion(self, limite: int = 40) -> list[dict]:
+        """Los últimos mensajes, para que la interfaz los muestre al abrir."""
+        return [{"rol": m["rol"], "texto": m["texto"], "fecha": m["fecha"]} for m in self.memoria.ultimos_mensajes(limite)]
+
+    def carpetas(self) -> list[str]:
+        """Las carpetas que NOVA conoce: las de config.json más las que le pediste."""
+        propias = json.loads(self.memoria.ajuste("carpetas", "[]") or "[]")
+        salida = []
+        for c in [*self.config.carpetas, *propias]:
+            for r in _variantes_carpeta(c):
+                if os.path.isdir(r) and r not in salida:
+                    salida.append(r)
+                    break
+        return salida
+
+    def conocer_carpeta(self, ruta: str, quitar: bool = False) -> str:
+        propias = json.loads(self.memoria.ajuste("carpetas", "[]") or "[]")
+        ruta = os.path.expandvars(os.path.expanduser(ruta.strip()))
+        if quitar:
+            propias = [p for p in propias if os.path.normcase(p) != os.path.normcase(ruta)]
+            self.memoria.fijar("carpetas", json.dumps(propias, ensure_ascii=False))
+            return f"Listo, ya no reviso {ruta}."
+        chequeo = politica.revisar_ruta(ruta, excluidas=self.config.unidades_excluidas)
+        if not chequeo.ok:
+            return f"No puedo leer esa carpeta: {chequeo.motivo}"
+        if not os.path.isdir(chequeo.ruta):
+            return f"No encuentro la carpeta {ruta}."
+        if str(chequeo.ruta) not in propias:
+            propias.append(str(chequeo.ruta))
+            self.memoria.fijar("carpetas", json.dumps(propias, ensure_ascii=False))
+        threading.Thread(target=self.indexar, args=([str(chequeo.ruta)],), daemon=True).start()
+        return (f"Voy a conocer {chequeo.ruta}. Leo los archivos de texto, código y Word (no los binarios ni node_modules, "
+                "bin, obj y similares); te aviso cuando termine. Desde ahí podré contestarte sobre tus archivos.")
+
+    def indexar(self, carpetas: list[str] | None = None) -> dict:
+        if self.indexando:
+            return {"indexados": 0, "omitidos": 0}
+        self.indexando = True
+        try:
+            r = self.memoria.indexar(carpetas or self.carpetas(), revisar=politica.revisar_ruta,
+                                     max_bytes=self.config.max_file_bytes, detener=self._detener.is_set)
+            if carpetas:
+                self.bus.publicar({"tipo": "aviso", "texto": f"Terminé de revisar {', '.join(carpetas)}: "
+                                                             f"{r['indexados']} archivo(s) nuevos o cambiados."})
+            return r
+        finally:
+            self.indexando = False
+
     def _contexto_relevante(self, texto: str) -> str:
         partes = []
+        for d in self.memoria.buscar_documentos(texto, 3):
+            partes.append(f"- (archivo {d['ruta']}) {d['fragmento']}")
         for r in self.memoria.buscar_recuerdos(texto, 5):
             partes.append(f"- ({r.tipo}) {r.texto}")
         for k in self.memoria.buscar_conocimiento(texto, 3):
@@ -164,14 +229,17 @@ class Nova:
             if nuevos:
                 self.bus.publicar({"tipo": "aprendi", "recuerdos": nuevos})
         en_linea = self.internet.hay_conexion()
+        self.observador.anotar(pantalla.ventana_activa())
         sistema = personalidad.prompt_sistema(
             self.personalidad,
-            personalidad.estado_propio(self.motor.nombre, self.motor.modelo, en_linea, self.memoria.estado(), self.voz.capacidades()),
+            personalidad.estado_propio(self.motor.nombre, self.motor.modelo, en_linea, self.memoria.estado(), self.voz.capacidades(),
+                                       vision=self.herramientas.vision, entorno=self.observador.resumen()),
             self.memoria.perfil(self.config.perfil_max_chars) if self.config.memoria_personal else "",
             self._contexto_relevante(texto),
         )
+        if sembrado is None and en_linea and self.internet.activo:
+            sembrado = self._investigar_antes(texto, ctx)
         mensajes = [{"role": "system", "content": sistema}, *self.historial[-10:], {"role": "user", "content": texto}, *(sembrado or [])]
-        self.herramientas.nueva_tarea(texto)
         busco, reintento, ultima_accion = bool(sembrado), False, None
         for _ in range(int(self.config.agente_max_pasos)):
             self._estado("procesando", ctx)
@@ -193,8 +261,7 @@ class Nova:
                 ultima_accion = firma
                 resultado = self._usar(nombre, args, ctx)
                 busco = busco or nombre in {"buscar_web", "leer_web"}
-                mensajes += [{"role": "assistant", "content": salida},
-                             {"role": "user", "content": f"RESULTADO de {nombre}:\n{envolver(resultado.origen, resultado.texto)}"}]
+                mensajes += [{"role": "assistant", "content": salida}, _mensaje_resultado(nombre, resultado)]
                 continue
             final = FINAL.sub("", salida, count=1).strip()
             if (not busco and not reintento and en_linea and NO_SABE.search(final)):
@@ -209,9 +276,28 @@ class Nova:
             return final or "…"
         return "Me enredé en demasiados pasos. ¿Me lo dices de otra forma o lo partimos en partes?"
 
+    def _investigar_antes(self, texto: str, ctx: str) -> list[dict] | None:
+        """Si escribiste un enlace, lo lee; si la pregunta depende de datos recientes, busca primero."""
+        urls = URL.findall(texto)[:2]
+        if urls:
+            sembrado = []
+            for url in urls:
+                r = self._usar("leer_web", {"url": url}, ctx)
+                sembrado += [{"role": "assistant", "content": 'ACCION: {"herramienta": "leer_web", "args": ' + json.dumps({"url": url}) + "}"},
+                             _mensaje_resultado("leer_web", r)]
+            return sembrado
+        if RECIENTE.search(texto):
+            consulta = _consulta(texto)
+            r = self._usar("buscar_web", {"consulta": consulta}, ctx)
+            return [{"role": "assistant", "content": 'ACCION: {"herramienta": "buscar_web", "args": ' + json.dumps({"consulta": consulta}, ensure_ascii=False) + "}"},
+                    _mensaje_resultado("buscar_web", r, "Usa esto si sirve para responder; cita las páginas.")]
+        return None
+
     def _usar(self, nombre: str, args: dict, ctx: str):
         self._estado("buscando" if nombre in {"buscar_web", "leer_web"} else "procesando",
                      "investigacion" if nombre in {"buscar_web", "leer_web"} else ctx)
+        if nombre == "ver_pantalla":
+            self.bus.publicar({"tipo": "viendo"})
         self.bus.publicar({"tipo": "herramienta", "nombre": nombre, "args": args})
         resultado = self.herramientas.usar(nombre, args)
         if resultado.uso_internet:
@@ -261,8 +347,17 @@ class Nova:
         if a == "parar":
             self.bus.publicar({"tipo": "parar"})
             return "Listo, me callo."
-        if a in {"pantalla", "zona"}:
-            return "Todavía no puedo ver la pantalla; llega en la siguiente versión."
+        if a == "zona":
+            return "Todavía no sé mirar solo una zona; dime «mira mi pantalla» y veo todo."
+        if a == "pantalla":
+            resultado = self._usar("ver_pantalla", {}, "general")
+            if isinstance(self.motor, MotorSimulado) and not self.motor.guion:
+                return resultado.texto
+            sembrado = [{"role": "assistant", "content": 'ACCION: {"herramienta": "ver_pantalla", "args": {}}'},
+                        _mensaje_resultado("ver_pantalla", resultado, "Describe brevemente qué estoy haciendo y ofrece ayuda concreta, con FINAL:.")]
+            return self._pensar(texto, "general", sembrado)
+        if a == "carpeta":
+            return self.conocer_carpeta(args["ruta"], quitar=bool(args.get("quitar")))
         if a == "tarea":
             return self.herramientas.usar("tarea", args).texto
         if a == "nota":
@@ -401,6 +496,21 @@ class Nova:
         return frase
 
     def arrancar_fondo(self) -> None:
+        self.observador.arrancar()
+
+        def indexador():
+            # Revisa tus carpetas al abrir y luego cada cierto tiempo (solo relee lo que cambió).
+            if self._detener.wait(20):
+                return
+            while True:
+                try:
+                    self.indexar()
+                except Exception:  # noqa: BLE001
+                    pass
+                if self._detener.wait(max(5, int(self.config.indexar_cada_min)) * 60):
+                    return
+        threading.Thread(target=indexador, daemon=True, name="nova-indexador").start()
+
         def ciclo():
             ultimo_sueno = dt.date.today()
             while not self._detener.wait(300):
@@ -416,7 +526,37 @@ class Nova:
 
     def cerrar(self) -> None:
         self._detener.set()
+        self.observador.detener()
         self.motor.detener()
+
+
+def _mensaje_resultado(nombre: str, resultado, indicacion: str = "") -> dict:
+    """El resultado de una herramienta como mensaje; con imagen si el motor tiene vista."""
+    texto = f"RESULTADO de {nombre}:\n{envolver(resultado.origen, resultado.texto)}" + (f"\n{indicacion}" if indicacion else "")
+    if getattr(resultado, "imagen", ""):
+        return {"role": "user", "content": [{"type": "text", "text": texto},
+                                             {"type": "image_url", "image_url": {"url": resultado.imagen}}]}
+    return {"role": "user", "content": texto}
+
+
+def _consulta(texto: str) -> str:
+    """Pregunta del usuario convertida en consulta de búsqueda (sin saludos ni relleno)."""
+    t = re.sub(r"^(oye,? )?(nova,? )?", "", texto.strip(), flags=re.I)
+    t = re.sub(r"^(por favor,? )?(me (puedes|podr[ií]as) )?(busca(r)?|investiga(r)?|googlea(r)?|dime|sabes)( en internet| en la web)?\s*", "", t, flags=re.I)
+    return t.strip(" ¿?¡!.") or texto
+
+
+def _variantes_carpeta(c: str) -> list[str]:
+    """«~/Documents» puede estar en OneDrive o con nombre en español."""
+    r = os.path.expandvars(os.path.expanduser(c))
+    variantes = [r]
+    casa = os.path.expanduser("~")
+    nombre = os.path.basename(r.rstrip("\\/"))
+    if os.path.dirname(r.rstrip("\\/")) == casa:
+        otros = {"Documents": ["Documentos"], "Desktop": ["Escritorio"], "Downloads": ["Descargas"]}.get(nombre, [])
+        for n in [nombre, *otros]:
+            variantes += [os.path.join(casa, "OneDrive", n), os.path.join(casa, n)]
+    return variantes
 
 
 def sin_pensamientos(texto: str) -> str:

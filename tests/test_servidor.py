@@ -116,3 +116,12 @@ def test_emparejar_limita_intentos(crear_nova):
     for _ in range(5):
         assert nova.emparejador.emparejar("x", "malo") is None
     assert nova.emparejador.emparejar(cod, "tarde") is None
+
+
+def test_conversacion_para_la_interfaz(servidor):
+    nova, srv, puerto = servidor
+    nova.procesar("hola")
+    codigo, cuerpo, _ = pedir(puerto, "/api/conversacion", cabeceras={"X-Nova-Token": srv.token})
+    assert codigo == 200
+    assert [m["rol"] for m in json.loads(cuerpo)] == ["usuario", "nova"]
+    assert pedir(puerto, "/api/conversacion")[0] == 401

@@ -53,8 +53,14 @@ def orden_rapida(texto: str) -> OrdenRapida | None:
         return None
     if re.fullmatch(r"(para|alto|silencio|callate|detente|ya)", t):
         return OrdenRapida("parar", {})
-    if re.fullmatch(r"(mira|ve|revisa) (la |mi )?pantalla", t):
+    if re.fullmatch(r"(mira|ve|revisa|checa|lee) (la |mi |esta )?pantalla|que (ves|hay) en (la |mi )?pantalla|que ves", t):
         return OrdenRapida("pantalla", {})
+    m = re.match(r"^(?:conoce|aprende|indexa|lee|revisa|estudia)\s+(?:la |mi |esta )?carpeta\s*:?\s*(.+)$", original, re.I)
+    if m:
+        return OrdenRapida("carpeta", {"ruta": m.group(1).strip().strip('"«»')})
+    m = re.match(r"^(?:olvida|deja de leer)\s+(?:la |mi )?carpeta\s*:?\s*(.+)$", original, re.I)
+    if m:
+        return OrdenRapida("carpeta", {"ruta": m.group(1).strip().strip('"«»'), "quitar": True})
     if re.fullmatch(r"(mira|ve) (esta|la) zona", t):
         return OrdenRapida("zona", {})
     m = re.match(r"^(?:nueva tarea|agrega (?:una )?tarea|tarea)\s*:?\s*(.+)$", original, re.I)

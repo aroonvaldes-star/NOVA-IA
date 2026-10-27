@@ -107,6 +107,13 @@ def diagnosticar(config: Config | None = None, rapido: bool = False) -> Reporte:
         r(MAL, f"{modelo.name} no es un GGUF válido", "Vuelve a descargarlo; probablemente quedó incompleto.")
     else:
         r(MAL, "No hay modelo instalado", "Ejecuta instalar.bat o usa: nova modelo instalar archivo.gguf")
+    from .motor import buscar_mmproj
+
+    mmproj = buscar_mmproj(config, modelo) if modelo else None
+    if mmproj:
+        r(BIEN, f"Vista: {mmproj.name} (puede ver imágenes y tu pantalla)")
+    else:
+        r(AVISO, "Sin modelo con vista", "NOVA leerá el texto de tu pantalla con el OCR de Windows. Para que vea, ejecuta instalar.bat.")
     if not _puerto_libre(int(config.endpoint.rsplit(":", 1)[-1])):
         r(AVISO, f"El puerto del motor ({config.endpoint}) está ocupado", "Si no es NOVA, cambia «endpoint» en config.json.")
 
@@ -185,6 +192,35 @@ def diagnosticar(config: Config | None = None, rapido: bool = False) -> Reporte:
                 r(BIEN if ok else AVISO, f"Me escuché a mí misma en {time.monotonic() - t0:.1f} s: «{oido}»")
         except Exception as exc:  # noqa: BLE001
             r(MAL, f"La voz falló: {exc}")
+
+    r.titulo("Pantalla y archivos")
+    from . import pantalla
+
+    if pantalla.ES_WINDOWS:
+        try:
+            cap = pantalla.capturar(320, esconder_nova=False)
+            r(BIEN, f"Captura de pantalla: {cap.ancho}x{cap.alto} · ventana en uso: {cap.ventana or 'ninguna'}")
+            if not rapido and not mmproj:
+                texto = pantalla.leer_texto(pantalla.capturar(1280, esconder_nova=False))
+                r(BIEN if texto else AVISO, f"OCR de Windows: {len(texto)} caracteres leídos",
+                  "" if texto else "Instala el paquete de idioma español con «Reconocimiento óptico de caracteres» en Configuración → Hora e idioma.")
+        except Exception as exc:  # noqa: BLE001
+            r(MAL, f"No pude capturar la pantalla: {exc}")
+    else:
+        r(AVISO, "Ver la pantalla solo funciona en Windows")
+    from .memoria import Memoria
+    from .nucleo import _variantes_carpeta
+    import json as _json
+    import os as _os
+
+    mem = Memoria(config.rutas.datos / "nova.db")
+    try:
+        propias = _json.loads(mem.ajuste("carpetas", "[]") or "[]")
+        conocidas = [c for c in [*config.carpetas, *propias] if any(_os.path.isdir(v) for v in _variantes_carpeta(c))]
+        r(BIEN, f"Carpetas que conozco: {', '.join(conocidas) or 'ninguna'} · {mem.estado()['documentos']} archivos leídos",
+          "" if propias else "Dile «conoce la carpeta N:\\TU_CARPETA» para que conozca tus proyectos.")
+    finally:
+        mem.cerrar()
 
     r.titulo("Interfaz y celular")
     r(BIEN if _puerto_libre(config.web_port) else AVISO, f"Puerto del orbe {config.web_port}",

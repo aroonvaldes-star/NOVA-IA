@@ -1,8 +1,8 @@
 // Interfaz de NOVA: conecta el orbe con el núcleo (eventos, mensajes, voz,
 // confirmaciones). Funciona en tres modos:
 //   escritorio  dentro de Tauri: ventana transparente a pantalla completa que
-//               deja pasar los clics salvo sobre la barra y las tarjetas
-//   navegador   para probar: el orbe flota dentro de la página
+//               deja pasar los clics salvo sobre la barra y la conversación
+//   navegador   la ventana de NOVA: el orbe flota junto a la conversación
 //   celular     conectado a tu PC por la red de tu casa
 
 import { Orbe } from './orbe.js';
@@ -15,7 +15,7 @@ if (MODO === 'navegador') document.body.classList.add('navegador');
 
 
 const $ = (s) => document.querySelector(s);
-const entrada = $('#entrada'), campo = $('#texto'), subtitulos = $('#subtitulos'), tarjetas = $('#tarjetas');
+const entrada = $('#entrada'), campo = $('#texto');
 const orbe = new Orbe($('#orbe'), { libre: MODO !== 'celular' });
 if (MODO !== 'escritorio') campo.placeholder = 'Escríbele a NOVA…';
 
@@ -47,48 +47,160 @@ function escapar(t) {
 
 function markdown(t) {
   const bloques = [];
-  let html = escapar(t).replace(/```[\w-]*\n?([\s\S]*?)```/g, (_, c) => { bloques.push(c); return `\u0000${bloques.length - 1}\u0000`; });
+  let html = escapar(t).replace(/```[\w-]*\n?([\s\S]*?)(```|$)/g, (_, c) => { bloques.push(c); return `\u0000${bloques.length - 1}\u0000`; });
   html = html
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
-    .split(/\n{2,}/).map((p) => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
-  return html.replace(/\u0000(\d+)\u0000/g, (_, i) => `<pre>${bloques[+i]}</pre>`);
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')
+    .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>')
+    .split(/\n{2,}/).map((p) => {
+      const lineas = p.split('\n');
+      if (lineas.every((l) => /^\s*[-*•] /.test(l))) return `<ul>${lineas.map((l) => `<li>${l.replace(/^\s*[-*•] /, '')}</li>`).join('')}</ul>`;
+      return `<p>${p.replace(/\n/g, '<br>')}</p>`;
+    }).join('');
+  return html.replace(/\u0000(\d+)\u0000/g, (_, i) => `<pre><code>${bloques[+i]}</code></pre>`);
 }
 
+// ------------------------------------------------------------ conversación
+// Todo lo que NOVA y tú se dicen aparece junto al orbe, en el mismo espacio:
+// sin recuadros, con lo viejo desvaneciéndose hacia arriba.
+
+const conversacion = $('#conversacion');
+let enCurso = null;      // el mensaje de NOVA que se está escribiendo
 let textoEnCurso = '';
-let temporizadorSub = null;
+let estado = null;       // la línea de "buscando…", "mirando tu pantalla…"
+let ultimoDia = '';
 
-function subtitulo(texto, segundos = 9) {
-  subtitulos.textContent = texto.length > 320 ? texto.slice(0, 300) + '…' : texto;
-  subtitulos.classList.remove('oculto');
-  clearTimeout(temporizadorSub);
-  temporizadorSub = setTimeout(() => subtitulos.classList.add('oculto'), segundos * 1000);
+function alFondo(forzar = false) {
+  const cerca = conversacion.scrollHeight - conversacion.scrollTop - conversacion.clientHeight < 160;
+  if (forzar || cerca) conversacion.scrollTop = conversacion.scrollHeight;
+  desvanecer();
 }
 
-function tarjeta(titulo, html, { copiar = '' } = {}) {
-  const nodo = $('#plantilla-tarjeta').content.firstElementChild.cloneNode(true);
-  nodo.querySelector('.titulo').textContent = titulo;
-  nodo.querySelector('.cuerpo').innerHTML = html;
-  nodo.querySelector('.cerrar').onclick = () => nodo.remove();
-  nodo.querySelector('.copiar').onclick = () => navigator.clipboard?.writeText(copiar || nodo.querySelector('.cuerpo').innerText);
-  tarjetas.prepend(nodo);
-  while (tarjetas.children.length > 6) tarjetas.lastElementChild.remove();
+// Los mensajes se desvanecen mientras más arriba quedan; al subir con la barra
+// vuelven a verse completos porque bajan a la zona clara.
+let pendienteDesvanecer = false;
+function desvanecer() {
+  if (pendienteDesvanecer) return;
+  pendienteDesvanecer = true;
+  requestAnimationFrame(() => {
+    pendienteDesvanecer = false;
+    const caja = conversacion.getBoundingClientRect();
+    if (!caja.height) return;
+    for (const nodo of conversacion.children) {
+      const r = nodo.getBoundingClientRect();
+      const f = (r.bottom - caja.top) / caja.height;  // 0 arriba, 1 abajo
+      const op = f >= 0.55 ? 1 : Math.max(0.12, 0.12 + (f / 0.55) * 0.88);
+      nodo.style.setProperty('--op', op.toFixed(2));
+    }
+  });
+}
+conversacion.addEventListener('scroll', desvanecer, { passive: true });
+addEventListener('resize', desvanecer);
+
+function separadorDia(fecha) {
+  const d = new Date(fecha * 1000);
+  const dia = d.toDateString();
+  if (dia === ultimoDia) return;
+  ultimoDia = dia;
+  const hoy = new Date().toDateString();
+  const ayer = new Date(Date.now() - 864e5).toDateString();
+  const texto = dia === hoy ? 'hoy' : dia === ayer ? 'ayer' : d.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
+  const sep = document.createElement('div');
+  sep.className = 'separador';
+  sep.textContent = texto;
+  conversacion.append(sep);
+}
+
+function mensaje(quien, texto, { fecha = Date.now() / 1000, html = null } = {}) {
+  separadorDia(fecha);
+  const nodo = document.createElement('div');
+  nodo.className = `msg ${quien}`;
+  if (html !== null) nodo.innerHTML = html;
+  else if (quien === 'nova') nodo.innerHTML = markdown(texto);
+  else nodo.textContent = texto;
+  conversacion.append(nodo);
+  document.body.classList.add('conversando');
+  acomodar();
+  despertar();
+  alFondo(quien === 'tu');
   return nodo;
 }
 
-function tarjetaConfirmacion(e) {
+function lineaEstado(texto) {
+  if (!estado) {
+    estado = mensaje('sistema', texto);
+  } else {
+    estado.textContent = texto;
+  }
+  alFondo();
+}
+
+function quitarEstado() {
+  estado?.remove();
+  estado = null;
+}
+
+function escribiendo(t) {
+  if (!enCurso) {
+    quitarEstado();
+    enCurso = mensaje('nova', '');
+    enCurso.classList.add('escribiendo');
+  }
+  textoEnCurso += t;
+  enCurso.innerHTML = markdown(textoEnCurso);
+  alFondo();
+}
+
+function terminarMensaje(texto) {
+  quitarEstado();
+  if (!enCurso) enCurso = mensaje('nova', '');
+  enCurso.classList.remove('escribiendo');
+  enCurso.innerHTML = markdown(texto);
+  enCurso = null;
+  textoEnCurso = '';
+  alFondo();
+}
+
+function fuentes(urls) {
+  const enlaces = [...new Set(urls)].slice(0, 5).map((u) => {
+    let host = u;
+    try { host = new URL(u).hostname.replace(/^www\./, ''); } catch { /* url rara */ }
+    return `<a href="${escapar(u)}" target="_blank" rel="noopener noreferrer">${escapar(host)}</a>`;
+  });
+  if (enlaces.length) mensaje('sistema', '', { html: '🌐 ' + enlaces.join(' · ') });
+}
+
+function confirmacion(e) {
+  quitarEstado();
   const nodo = $('#plantilla-confirmacion').content.firstElementChild.cloneNode(true);
   nodo.querySelector('.descripcion').textContent = e.descripcion;
   nodo.querySelector('.codigo').textContent = e.codigo;
   nodo.querySelector('.solo-clic').hidden = !e.solo_clic;
   nodo.querySelector('.si').onclick = async () => {
-    nodo.remove();
+    nodo.classList.add('resuelta');
     const r = await (await api('/api/confirmar', { codigo: e.codigo })).json();
-    tarjeta(r.ok ? 'Hecho' : 'No se pudo', `<pre>${escapar(r.salida || '')}</pre>`);
+    mensaje('sistema', (r.ok ? '✔ ' : '✘ ') + (r.salida || '').slice(0, 600));
   };
-  nodo.querySelector('.no').onclick = () => { nodo.remove(); api('/api/cancelar', { codigo: e.codigo }); };
-  tarjetas.prepend(nodo);
+  nodo.querySelector('.no').onclick = () => {
+    nodo.classList.add('resuelta');
+    api('/api/cancelar', { codigo: e.codigo });
+    mensaje('sistema', 'Cancelado.');
+  };
+  separadorDia(Date.now() / 1000);
+  conversacion.append(nodo);
+  document.body.classList.add('conversando');
+  acomodar();
+  alFondo(true);
   mostrarEntrada(true);
+}
+
+async function cargarConversacion() {
+  try {
+    const r = await api('/api/conversacion');
+    if (!r.ok) return;
+    for (const m of await r.json()) mensaje(m.rol === 'usuario' ? 'tu' : 'nova', m.texto, { fecha: m.fecha });
+    alFondo(true);
+  } catch { /* sin núcleo todavía */ }
 }
 
 // ------------------------------------------------------------ indicadores
@@ -98,7 +210,7 @@ function indicadorInternet(urls) {
   const ind = $('#ind-internet');
   ind.hidden = false;
   ind.title = urls.join('\n');
-  ind.textContent = `🌐 internet · ${new URL(urls[0]).hostname}${urls.length > 1 ? ` +${urls.length - 1}` : ''}`;
+  try { ind.textContent = `🌐 internet · ${new URL(urls[0]).hostname}${urls.length > 1 ? ` +${urls.length - 1}` : ''}`; } catch { /* url rara */ }
   clearTimeout(temporizadorRed);
   temporizadorRed = setTimeout(() => (ind.hidden = true), 12000);
 }
@@ -109,46 +221,50 @@ function alEvento(e) {
   switch (e.tipo) {
     case 'estado':
       orbe.estado(e.estado, e.contexto);
-      if (e.estado === 'procesando' && !textoEnCurso) subtitulo('…', 60);
+      if (e.color) document.documentElement.style.setProperty('--color-orbe', e.color);
+      if (e.estado === 'procesando' && !enCurso && !estado) lineaEstado('Pensando…');
+      if (e.estado === 'reposo') $('#ind-pantalla').hidden = true;
       break;
     case 'token':
-      textoEnCurso += e.texto;
-      subtitulo(textoEnCurso, 60);
+      escribiendo(e.texto);
       break;
     case 'reinicio':
-      textoEnCurso = '';
-      subtitulo('No lo sé de memoria; lo busco…', 60);
+      if (enCurso) { enCurso.remove(); enCurso = null; textoEnCurso = ''; }
+      lineaEstado('No lo sé de memoria; lo busco…');
       break;
     case 'herramienta':
-      if (!textoEnCurso) subtitulo(descripcionHerramienta(e), 60);
+      if (!enCurso) lineaEstado(descripcionHerramienta(e));
+      break;
+    case 'viendo':
+      $('#ind-pantalla').hidden = false;
       break;
     case 'internet':
       indicadorInternet(e.urls);
+      quitarEstado();
+      fuentes(e.urls);
       break;
     case 'confirmacion':
-      tarjetaConfirmacion(e);
+      confirmacion(e);
       break;
-    case 'final': {
-      textoEnCurso = '';
-      const largo = e.texto.length > 280 || e.texto.includes('```') || e.texto.includes('\n- ');
-      subtitulo(largo ? e.texto.split('\n')[0].slice(0, 200) + ' (más en la tarjeta)' : e.texto, largo ? 8 : 12);
-      if (largo) tarjeta('NOVA', markdown(e.texto), { copiar: e.texto });
+    case 'final':
+      terminarMensaje(e.texto);
       if (e.hablar && e.voz) hablar(e.voz);
       break;
-    }
     case 'platica':
-      subtitulo(e.texto, 20);
+      mensaje('nova', e.texto);
       break;
     case 'aprendi':
-      setTimeout(() => subtitulo('Lo recordaré.', 3), 50);
+      mensaje('sistema', 'Lo recordaré' + (e.recuerdos?.length ? ': ' + e.recuerdos.map((r) => r.texto || r).join('; ') : '.'));
       break;
-    case 'resultado':
+    case 'aviso':
+      mensaje('sistema', e.texto);
       break;
     case 'parar':
       callar();
       break;
     case 'error':
-      subtitulo('Algo falló: ' + e.texto, 10);
+      quitarEstado();
+      mensaje('sistema', 'Algo falló: ' + e.texto);
       break;
   }
 }
@@ -156,13 +272,16 @@ function alEvento(e) {
 function descripcionHerramienta(e) {
   const a = e.args || {};
   return {
-    buscar_web: `Buscando en internet: ${a.consulta || ''}`,
-    leer_web: 'Leyendo una página…',
-    buscar_memoria: 'Buscando en mi memoria…',
+    buscar_web: `🌐 Buscando en internet: ${a.consulta || ''}`,
+    leer_web: `🌐 Leyendo ${a.url || 'una página'}…`,
+    buscar_memoria: 'Buscando en mi memoria y tus archivos…',
+    buscar_archivos: `Buscando archivos: ${a.nombre || ''}`,
     leer_archivo: `Leyendo ${a.ruta || 'un archivo'}…`,
     listar: `Mirando ${a.ruta || 'una carpeta'}…`,
+    ver_pantalla: '👁 Mirando tu pantalla…',
     orden: `Preparando: ${a.orden || ''}`,
     escribir_archivo: 'Preparando un archivo…',
+    calcular: 'Calculando…',
   }[e.nombre] || 'Pensando…';
 }
 
@@ -204,9 +323,8 @@ let entradaVisible = MODO !== 'escritorio';
 function mostrarEntrada(visible) {
   entradaVisible = visible;
   entrada.classList.toggle('oculto', !visible);
-  if (MODO === 'celular') orbe.anclar(true, { x: innerWidth / 2, y: innerHeight * 0.24 });
-  else if (MODO === 'escritorio') orbe.anclar(visible);
-  if (visible) setTimeout(() => campo.focus(), 30);
+  if (MODO === 'escritorio') orbe.anclar(visible);
+  if (visible) { despertar(); setTimeout(() => campo.focus(), 30); }
 }
 
 entrada.addEventListener('submit', (ev) => {
@@ -214,10 +332,16 @@ entrada.addEventListener('submit', (ev) => {
   const texto = campo.value.trim();
   if (!texto) return;
   campo.value = '';
-  textoEnCurso = '';
   callar();
-  api('/api/mensaje', { texto });
+  enviar(texto);
 });
+
+function enviar(texto, voz = false) {
+  if (enCurso) terminarMensaje(textoEnCurso);
+  mensaje('tu', texto);
+  lineaEstado('Pensando…');
+  api('/api/mensaje', voz ? { texto, voz: true } : { texto });
+}
 
 addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') {
@@ -228,19 +352,45 @@ addEventListener('keydown', (ev) => {
   }
 });
 
-// Posición de los textos alrededor del orbe
+// Dónde vive el orbe según haya o no conversación, y el tamaño de la ventana.
+function acomodar() {
+  const conversando = document.body.classList.contains('conversando');
+  if (MODO === 'celular') {
+    orbe.limitar({ x: 0, y: 40, w: innerWidth, h: innerHeight * 0.3 - 40 }, 0.62);
+    orbe.anclar(true);
+  } else if (MODO === 'navegador') {
+    if (!conversando) orbe.limitar(null, 1);
+    else if (innerWidth <= 820) orbe.limitar({ x: 0, y: 30, w: innerWidth, h: innerHeight * 0.36 - 30 }, 0.62);
+    else {
+      const ancho = $('#charla').getBoundingClientRect().width || Math.min(innerWidth * 0.58, 760);
+      orbe.limitar({ x: 0, y: 0, w: innerWidth - ancho, h: innerHeight }, 1);
+    }
+  }
+}
+addEventListener('resize', acomodar);
+setTimeout(acomodar, 600);  // cuando termina la transición de la charla
+
+// En el escritorio transparente la conversación se duerme cuando no la usas.
+let temporizadorDormir = null;
+function despertar() {
+  if (MODO !== 'escritorio') return;
+  conversacion.classList.remove('dormida');
+  clearTimeout(temporizadorDormir);
+  temporizadorDormir = setTimeout(() => { if (!entradaVisible) conversacion.classList.add('dormida'); }, 25000);
+}
+
+// Posición de los indicadores (y en el escritorio, de la charla) alrededor del orbe
 orbe.alMover = ({ x, y, r }) => {
   if (MODO === 'celular') return;
-  const debajo = y + r * 1.55;
-  subtitulos.style.left = `${x}px`;
-  subtitulos.style.top = `${debajo}px`;
   const ind = $('#indicadores');
   ind.style.left = `${x}px`;
   ind.style.top = `${Math.max(8, y - r * 1.6 - 24)}px`;
-  if (MODO === 'navegador') return;  // en el navegador la barra se queda abajo
-  const alto = subtitulos.classList.contains('oculto') ? 0 : subtitulos.offsetHeight + 12;
-  entrada.style.left = `${Math.min(Math.max(x, 270), innerWidth - 270)}px`;
-  entrada.style.top = `${Math.min(debajo + alto, innerHeight - 60)}px`;
+  if (MODO !== 'escritorio') return;
+  const charla = $('#charla');
+  const ancho = charla.offsetWidth;
+  const derecha = x + r * 1.4 + ancho + 24 < innerWidth;
+  charla.style.left = `${derecha ? x + r * 1.4 : Math.max(16, x - r * 1.4 - ancho)}px`;
+  charla.style.top = `${Math.min(Math.max(16, y - charla.offsetHeight / 2), innerHeight - charla.offsetHeight - 16)}px`;
 };
 if (MODO !== 'celular') addEventListener('mousemove', (ev) => orbe.moverCursor(ev.clientX, ev.clientY));
 
@@ -313,7 +463,7 @@ async function empezarGrabacion() {
     $('#ind-escucha').hidden = false;
     orbe.estado('escuchando');
   } catch {
-    subtitulo('No tengo permiso para usar el micrófono.', 6);
+    mensaje('sistema', 'No tengo permiso para usar el micrófono.');
   }
 }
 
@@ -333,10 +483,8 @@ async function terminarGrabacion() {
   orbe.estado('procesando');
   const r = await api('/api/voz/stt', wav);
   const datos = await r.json();
-  if (!r.ok || !datos.texto) { subtitulo(datos.error || 'No te entendí.', 6); orbe.estado('reposo'); return; }
-  subtitulo(`«${datos.texto}»`, 5);
-  textoEnCurso = '';
-  api('/api/mensaje', { texto: datos.texto, voz: true });
+  if (!r.ok || !datos.texto) { mensaje('sistema', datos.error || 'No te entendí.'); orbe.estado('reposo'); return; }
+  enviar(datos.texto, true);
 }
 
 function aWav(trozos, total, tasa) {
@@ -374,7 +522,7 @@ if (TAURI) {
       if (r.width && r.height) zonas.push([r.left, r.top, r.width, r.height]);
     };
     if (entradaVisible) agregar(entrada);
-    for (const t of tarjetas.children) agregar(t);
+    if (!conversacion.classList.contains('dormida')) agregar(conversacion);
     invoke('zonas', { zonas }).catch(() => {});
   }, 120);
 }
@@ -383,11 +531,10 @@ if (TAURI) {
 
 function mostrarEmparejar() {
   if (document.querySelector('.emparejar')) return;
-  const nodo = tarjeta('Conectar con tu PC', `
-    <p>En tu PC, abre NOVA y di o escribe <b>«conecta mi celular»</b>. Te mostrará un código de 6 cifras.</p>
-    <p><input class="codigo-emparejar" inputmode="numeric" maxlength="6" placeholder="000000"
-      style="font-size:22px;letter-spacing:4px;width:9em;background:#0008;color:#fff;border:1px solid #fff4;border-radius:8px;padding:6px"></p>
-    <p><button class="boton-emparejar">Conectar</button></p>`);
+  const nodo = mensaje('nova', '', { html: `
+    <p>Para hablar conmigo desde aquí, en tu PC escríbeme <b>«conecta mi celular»</b>. Te daré un código de 6 cifras.</p>
+    <p><input class="codigo-emparejar" inputmode="numeric" maxlength="6" placeholder="000000" aria-label="Código"></p>
+    <p><button class="boton boton-emparejar">Conectar</button></p>` });
   nodo.classList.add('emparejar');
   nodo.querySelector('.boton-emparejar').onclick = async () => {
     const codigo = nodo.querySelector('.codigo-emparejar').value.trim();
@@ -396,14 +543,20 @@ function mostrarEmparejar() {
       body: JSON.stringify({ codigo, nombre: navigator.userAgent.slice(0, 80) }),
     });
     const d = await r.json();
-    if (!r.ok) { nodo.querySelector('.cuerpo p').textContent = d.error || 'Código incorrecto.'; return; }
+    if (!r.ok) { nodo.querySelector('p').textContent = d.error || 'Código incorrecto.'; return; }
     tokenCelular = d.dispositivo;
     try { localStorage.setItem('nova-dispositivo', tokenCelular); } catch { /* sin almacenamiento */ }
     nodo.remove();
-    escucharEventos();
+    iniciar();
   };
 }
 
+async function iniciar() {
+  await cargarConversacion();
+  escucharEventos();
+}
+
 if (CELULAR) mostrarEntrada(true);
+acomodar();
 if (CELULAR && !tokenCelular) mostrarEmparejar();
-else escucharEventos();
+else iniciar();

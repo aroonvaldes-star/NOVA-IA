@@ -1,11 +1,14 @@
 :root {
   --texto: #eef3ff;
   --texto-suave: #b8c4e0;
+  --texto-tenue: #8494ba;
   --vidrio: rgba(10, 14, 30, 0.72);
   --borde: rgba(140, 170, 255, 0.28);
   --acento: #3b82f6;
+  --color-orbe: #3b82f6;
   --peligro: #ef4444;
   --fondo-pagina: #05070f;
+  --ancho-charla: min(58vw, 760px);
   font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   color-scheme: dark;
 }
@@ -18,9 +21,9 @@ html, body {
   color: var(--texto);
 }
 
-/* En el navegador (modo desarrollo) hay fondo; en el escritorio, transparente. */
-body.navegador {
-  background: radial-gradient(ellipse at 50% 40%, #0b1430 0%, var(--fondo-pagina) 70%);
+/* En la ventana de NOVA y en el celular hay fondo; en el escritorio (Tauri), transparente. */
+body.navegador, body.celular {
+  background: radial-gradient(ellipse at 30% 45%, #0b1430 0%, var(--fondo-pagina) 70%);
 }
 
 #orbe {
@@ -33,19 +36,6 @@ body.navegador {
 }
 
 .flotante { position: fixed; z-index: 2; }
-
-#subtitulos {
-  max-width: min(560px, 80vw);
-  font-size: 17px;
-  line-height: 1.45;
-  text-align: center;
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.9);
-  transform: translate(-50%, 0);
-  transition: opacity 0.6s ease;
-  pointer-events: none;
-  white-space: pre-wrap;
-}
-#subtitulos.oculto { opacity: 0; }
 
 #indicadores {
   display: flex;
@@ -60,6 +50,7 @@ body.navegador {
   border-radius: 999px;
   padding: 2px 9px;
   color: var(--texto-suave);
+  white-space: nowrap;
 }
 .punto {
   display: inline-block; width: 8px; height: 8px; border-radius: 50%;
@@ -67,12 +58,146 @@ body.navegador {
 }
 @keyframes latido { 50% { opacity: 0.3; } }
 
+/* ------------------------------------------------------------ charla */
+
+#charla {
+  position: fixed;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+  transition: left 0.5s ease, right 0.5s ease, top 0.5s ease, width 0.5s ease;
+}
+
+#conversacion {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 24px 6px 4px 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(140, 170, 255, 0.38) transparent;
+}
+#conversacion::-webkit-scrollbar { width: 6px; }
+#conversacion::-webkit-scrollbar-track { background: transparent; }
+#conversacion::-webkit-scrollbar-thumb { background: rgba(140, 170, 255, 0.32); border-radius: 3px; }
+#conversacion::-webkit-scrollbar-thumb:hover { background: rgba(140, 170, 255, 0.6); }
+#conversacion:empty { display: none; }
+
+/* Lo viejo se va desvaneciendo hacia arriba (app.js calcula --op); al pasar el ratón se lee completo. */
+.msg, .separador {
+  opacity: var(--op, 1);
+  transition: opacity 0.25s ease;
+}
+.msg:hover { opacity: 1; }
+
+.msg {
+  margin: 0 0 16px;
+  font-size: 15px;
+  line-height: 1.55;
+  animation: aparecer 0.3s ease;
+  overflow-wrap: anywhere;
+}
+@keyframes aparecer { from { opacity: 0; transform: translateY(6px); } }
+.msg p { margin: 0 0 8px; }
+.msg p:last-child { margin-bottom: 0; }
+
+.msg.nova {
+  position: relative;
+  padding-left: 18px;
+  color: var(--texto);
+}
+.msg.nova::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 0.62em;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-orbe);
+  box-shadow: 0 0 10px var(--color-orbe);
+}
+.msg.nova.escribiendo::after {
+  content: "▍";
+  margin-left: 2px;
+  color: var(--color-orbe);
+  animation: latido 0.9s infinite;
+}
+
+.msg.tu {
+  margin-left: 18%;
+  text-align: right;
+  color: var(--texto-suave);
+}
+.msg.tu .quien { display: none; }
+
+.msg.sistema {
+  font-size: 12.5px;
+  color: var(--texto-tenue);
+  margin: -8px 0 14px 18px;
+}
+.msg.sistema a { color: var(--texto-tenue); }
+
+.separador {
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--texto-tenue);
+  margin: 6px 0 18px;
+}
+
+.msg pre, .msg code {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12.5px;
+}
+.msg pre {
+  background: rgba(0, 0, 0, 0.35);
+  border-left: 2px solid rgba(140, 170, 255, 0.35);
+  padding: 8px 10px;
+  margin: 6px 0 10px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.msg code { background: rgba(255, 255, 255, 0.07); padding: 0 4px; border-radius: 4px; }
+.msg pre code { background: none; padding: 0; }
+.msg a { color: #93c5fd; }
+.msg ul { margin: 4px 0 8px; padding-left: 20px; }
+
+.msg.confirmar {
+  border-left: 2px solid #f59e0b;
+  padding-left: 14px;
+  margin-left: 4px;
+}
+.msg.confirmar .aviso { color: #fcd34d; font-weight: 600; }
+.msg.confirmar .codigo { font-size: 18px; letter-spacing: 3px; color: #fcd34d; }
+.msg.confirmar pre { border-left-color: rgba(245, 158, 11, 0.5); }
+.botones { display: flex; gap: 8px; }
+.botones button, .msg button.boton {
+  border: 1px solid var(--borde);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--texto);
+  border-radius: 999px;
+  padding: 5px 14px;
+  cursor: pointer;
+  font-size: 13.5px;
+}
+.codigo-emparejar {
+  font-size: 22px; letter-spacing: 4px; width: 9em; background: rgba(0, 0, 0, 0.5); color: #fff;
+  border: 1px solid var(--borde); border-radius: 8px; padding: 6px;
+}
+.botones .si { border-color: #f59e0b; color: #fde68a; }
+.msg.confirmar.resuelta .botones { display: none; }
+
+/* ------------------------------------------------------------ entrada */
+
 #entrada {
   display: flex;
   gap: 6px;
   align-items: center;
-  width: min(520px, 86vw);
-  transform: translate(-50%, 0);
   background: var(--vidrio);
   border: 1px solid var(--borde);
   border-radius: 999px;
@@ -97,6 +222,7 @@ body.navegador {
   border-radius: 50%;
   width: 34px;
   height: 34px;
+  flex: none;
   background: rgba(255, 255, 255, 0.08);
   color: var(--texto);
   font-size: 15px;
@@ -105,85 +231,48 @@ body.navegador {
 #entrada button:hover { background: rgba(255, 255, 255, 0.16); }
 #microfono.grabando { background: var(--peligro); }
 
-#tarjetas {
-  position: fixed;
-  right: 24px;
-  bottom: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: min(460px, calc(100vw - 32px));
-  max-height: calc(100vh - 48px);
-  overflow-y: auto;
-  z-index: 3;
+/* -------------------------------------------- ventana de NOVA (navegador) */
+
+/* Sin conversación todavía: el orbe al centro y la barra abajo. */
+body.navegador #charla {
+  left: 50%;
+  bottom: 28px;
+  width: min(560px, calc(100vw - 32px));
+  transform: translateX(-50%);
 }
-.tarjeta {
-  background: var(--vidrio);
-  border: 1px solid var(--borde);
-  border-radius: 14px;
-  padding: 12px 14px;
-  backdrop-filter: blur(16px);
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-  font-size: 14px;
-  line-height: 1.45;
-  animation: aparecer 0.25s ease;
+/* Conversando: el orbe a la izquierda y la charla a la derecha, en el mismo espacio. */
+body.navegador.conversando #charla {
+  left: auto;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--ancho-charla);
+  transform: none;
+  padding: 0 32px 28px 8px;
 }
-@keyframes aparecer { from { opacity: 0; transform: translateY(8px); } }
-.tarjeta header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-weight: 600;
-  margin-bottom: 6px;
-  color: var(--texto-suave);
+@media (max-width: 820px) {
+  body.navegador.conversando #charla { left: 0; right: 0; top: 36vh; width: auto; padding: 0 16px 16px; }
 }
-.tarjeta header button {
-  background: none; border: 0; color: var(--texto-suave); cursor: pointer; font-size: 14px; margin-left: 4px;
+
+/* ------------------------------------------------------------- celular */
+body.celular #indicadores { left: 50% !important; top: 12px !important; }
+body.celular #charla {
+  left: 0; right: 0; top: 30vh; bottom: 0;
+  padding: 0 16px max(16px, env(safe-area-inset-bottom));
 }
-.tarjeta pre, .tarjeta code {
-  font-family: "Cascadia Code", Consolas, monospace;
-  font-size: 12.5px;
-}
-.tarjeta pre {
-  background: rgba(0, 0, 0, 0.4);
-  border-radius: 8px;
-  padding: 8px 10px;
-  overflow-x: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.tarjeta .cuerpo p { margin: 0 0 8px; }
-.tarjeta a { color: #93c5fd; }
-.confirmacion { border-color: rgba(245, 158, 11, 0.7); }
-.confirmacion .codigo { font-size: 20px; letter-spacing: 3px; color: #fcd34d; }
-.confirmacion footer { display: flex; gap: 8px; justify-content: flex-end; }
-.confirmacion footer button {
-  border: 1px solid var(--borde); background: rgba(255, 255, 255, 0.08); color: var(--texto);
-  border-radius: 8px; padding: 6px 14px; cursor: pointer; font-size: 14px;
-}
-.confirmacion footer .si { background: #b45309; border-color: #f59e0b; }
+body.celular #microfono { width: 44px; height: 44px; }
+
+/* ------------------------------------------- escritorio (Tauri, transparente) */
+body.escritorio #charla { width: min(460px, 40vw); max-height: 56vh; }
+body.escritorio .msg { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.95), 0 0 2px rgba(0, 0, 0, 0.9); }
+body.escritorio #conversacion { transition: opacity 0.6s ease; }
+body.escritorio #conversacion.dormida { opacity: 0; }
 
 @media (prefers-reduced-motion: reduce) {
-  .tarjeta { animation: none; }
+  .msg, #charla { animation: none; transition: none; }
   .punto { animation: none; }
 }
 
 @media (prefers-contrast: more) {
-  :root { --vidrio: #000; --borde: #fff; --texto-suave: #fff; }
+  :root { --vidrio: #000; --borde: #fff; --texto-suave: #fff; --texto-tenue: #ddd; }
 }
-
-body.navegador #entrada { left: 50%; bottom: 28px; }
-
-/* ------------------------------------------------------------- celular */
-body.celular { background: radial-gradient(ellipse at 50% 30%, #0b1430 0%, var(--fondo-pagina) 70%); }
-body.celular #subtitulos {
-  left: 50% !important; top: 46vh !important; width: calc(100vw - 32px); max-width: none; font-size: 16px;
-}
-body.celular #indicadores { left: 50% !important; top: 12px !important; }
-body.celular #entrada {
-  left: 50% !important; top: auto !important; bottom: max(16px, env(safe-area-inset-bottom)); width: calc(100vw - 32px);
-}
-body.celular #tarjetas {
-  left: 16px; right: 16px; width: auto; bottom: 84px; max-height: 40vh;
-}
-body.celular #microfono { width: 44px; height: 44px; }

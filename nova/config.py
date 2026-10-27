@@ -19,7 +19,14 @@ DEFECTO: dict[str, Any] = {
     "manage_server": True,
     "server_binary": "",
     "chat_model": "",
-    "context": 4096,  # cabe junto a un modelo 4B Q4 en 4 GB de VRAM
+    "context": 8192,  # con la caché en 8 bits cabe junto a un modelo 4B Q4 en 4 GB de VRAM
+    "kv_cache": "q8_0",  # "" para la caché normal (f16)
+    # Vista: si junto al modelo hay un proyector mmproj, NOVA puede ver imágenes y tu pantalla
+    "vision": True,
+    "vision_mmproj": "",
+    "vision_en_gpu": False,  # en GPUs de 4 GB el proyector va mejor en el procesador
+    "vision_max_tokens": 1024,
+    "pantalla_max_ancho": 1280,
     "gpu_layers": 99,
     "server_idle_seconds": 600,
     "motor": "auto",  # auto | llama | simulado
@@ -41,6 +48,10 @@ DEFECTO: dict[str, Any] = {
     "internet_max_paginas": 5,
     "internet_max_kb_pagina": 300,
     "internet_timeout": 15,
+    "internet_leer_paginas": 2,  # además de los resultados, lee las primeras páginas para responder con detalle
+    # Tus archivos: carpetas que NOVA conoce (además de las que le pidas con «conoce la carpeta …»)
+    "carpetas": ["~/Documents", "~/Desktop"],
+    "indexar_cada_min": 30,
     # Unidades
     "unidades": "todas",
     "unidades_excluidas": [],
