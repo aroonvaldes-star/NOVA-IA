@@ -45,6 +45,10 @@ class OrdenRapida:
     args: dict
 
 
+def _ruta(texto: str) -> str:
+    return texto.strip().strip('"«»').rstrip("?.!").strip()
+
+
 def orden_rapida(texto: str) -> OrdenRapida | None:
     """Reconoce las órdenes rápidas de voz o texto. None si hay que pasarlo al modelo."""
     original = quitar_activacion(texto)
@@ -55,12 +59,18 @@ def orden_rapida(texto: str) -> OrdenRapida | None:
         return OrdenRapida("parar", {})
     if re.fullmatch(r"(mira|ve|revisa|checa|lee) (la |mi |esta )?pantalla|que (ves|hay) en (la |mi )?pantalla|que ves", t):
         return OrdenRapida("pantalla", {})
-    m = re.match(r"^(?:conoce|aprende|indexa|lee|revisa|estudia)\s+(?:la |mi |esta )?carpeta\s*:?\s*(.+)$", original, re.I)
+    m = re.match(r"^(?:conoce|aprende|indexa|estudia)\s+(?:la |mi |esta )?carpeta\s*:?\s*(.+)$", original, re.I)
     if m:
-        return OrdenRapida("carpeta", {"ruta": m.group(1).strip().strip('"«»')})
+        return OrdenRapida("carpeta", {"ruta": _ruta(m.group(1))})
+    # «analiza la carpeta X», «revisa los archivos de X», «qué hay en X»: la conoce y además la explica.
+    m = re.match(r"^(?:analiza|explora|revisa|checa|mira|lee|examina|resume|¿?qu[eé] hay en|expl[ií]came)\s+"
+                 r"(?:(?:todos )?(?:los )?archivos (?:de|en) )?(?:la |mi |esta |el )?(?:carpeta|proyecto)?\s*:?\s*"
+                 r"([\"«]?(?:[a-z]:[\\/]|~[\\/]|/).+)$", original, re.I)
+    if m:
+        return OrdenRapida("analizar_carpeta", {"ruta": _ruta(m.group(1))})
     m = re.match(r"^(?:olvida|deja de leer)\s+(?:la |mi )?carpeta\s*:?\s*(.+)$", original, re.I)
     if m:
-        return OrdenRapida("carpeta", {"ruta": m.group(1).strip().strip('"«»'), "quitar": True})
+        return OrdenRapida("carpeta", {"ruta": _ruta(m.group(1)), "quitar": True})
     if re.fullmatch(r"(mira|ve) (esta|la) zona", t):
         return OrdenRapida("zona", {})
     m = re.match(r"^(?:nueva tarea|agrega (?:una )?tarea|tarea)\s*:?\s*(.+)$", original, re.I)

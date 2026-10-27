@@ -149,3 +149,36 @@ def test_proyector_generico_solo_con_modelo_de_vista(config):
     (m / "mmproj-F16.gguf").write_bytes(b"GGUF")
     assert buscar_mmproj(config, m / "Qwen3-VL-4B-Instruct-Q4_K_M.gguf").name == "mmproj-F16.gguf"
     assert buscar_mmproj(config, m / "Qwen3-4B-Instruct-2507-Q4_K_M.gguf") is None
+
+
+def test_analiza_una_carpeta_y_la_explica(crear_nova, tmp_path):
+    proyecto = tmp_path / "NOVORA-LINK"
+    (proyecto / "app" / "src").mkdir(parents=True)
+    (proyecto / "node_modules").mkdir()
+    (proyecto / "README.md").write_text("# NOVORA-LINK\nEnlaza el celular con la PC por Firestore.", encoding="utf-8")
+    (proyecto / "package.json").write_text('{"name": "novora-link", "dependencies": {"firebase": "^11"}}', encoding="utf-8")
+    (proyecto / "app" / "src" / "main.kt").write_text("fun main() {}", encoding="utf-8")
+    (proyecto / "node_modules" / "x.js").write_text("basura", encoding="utf-8")
+    nova = crear_nova(["FINAL: Es una app que enlaza el celular con la PC usando Firebase."])
+    assert "Firebase" in nova.procesar(f"analiza la carpeta {proyecto}")
+    visto = nova.motor.recibidos[0][-1]["content"]
+    assert "Enlaza el celular" in visto and "novora-link" in visto and "main.kt" in visto
+    assert "node_modules" not in visto
+    assert nova.herramientas.leyo_privado
+
+
+def test_analizar_carpeta_que_no_existe(crear_nova, tmp_path):
+    nova = crear_nova()
+    assert "No encuentro" in nova.procesar(f"analiza la carpeta {tmp_path / 'no-existe'}")
+
+
+def test_onedrive_no_cuenta_como_enlace():
+    import os
+    from types import SimpleNamespace
+
+    from nova.politica import es_nube
+
+    assert es_nube(SimpleNamespace(st_reparse_tag=0x9000701A))
+    assert not es_nube(SimpleNamespace(st_reparse_tag=0xA000000C))  # enlace simbólico
+    assert not es_nube(SimpleNamespace(st_reparse_tag=0xA0000003))  # junction
+    assert not es_nube(os.stat("."))

@@ -358,6 +358,18 @@ class Nova:
             return self._pensar(texto, "general", sembrado)
         if a == "carpeta":
             return self.conocer_carpeta(args["ruta"], quitar=bool(args.get("quitar")))
+        if a == "analizar_carpeta":
+            resultado = self._usar("analizar_carpeta", args, "analisis")
+            if resultado.texto.startswith(("No puedo", "No encuentro")):
+                return resultado.texto
+            self.conocer_carpeta(args["ruta"])  # además la indexa para preguntas después
+            if isinstance(self.motor, MotorSimulado) and not self.motor.guion:
+                return resultado.texto[:1500]
+            sembrado = [{"role": "assistant", "content": 'ACCION: {"herramienta": "analizar_carpeta", "args": ' + json.dumps(args, ensure_ascii=False) + "}"},
+                        _mensaje_resultado("analizar_carpeta", resultado,
+                                           "Explica en pocas frases qué es este proyecto o carpeta, cómo está organizado y qué "
+                                           "llama la atención. Ofrece profundizar en una parte. Usa FINAL:.")]
+            return self._pensar(texto, "analisis", sembrado)
         if a == "tarea":
             return self.herramientas.usar("tarea", args).texto
         if a == "nota":

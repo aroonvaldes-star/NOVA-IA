@@ -275,6 +275,13 @@ def revisar_ruta_texto(texto: str, windows: bool | None = None, usuario: str | N
     return ChequeoRuta(True)
 
 
+def es_nube(st: os.stat_result) -> bool:
+    """OneDrive (y otros con la API de archivos en la nube de Windows) marca sus carpetas y
+    archivos como puntos de reanálisis «cloud». No son enlaces: se pueden leer con normalidad."""
+    etiqueta = getattr(st, "st_reparse_tag", 0)
+    return (etiqueta & 0xFFFF0FFF) == 0x9000001A or etiqueta == 0x9000001A
+
+
 def _dentro(p: PureWindowsPath, base: PureWindowsPath) -> bool:
     a = [x.lower() for x in p.parts]
     b = [x.lower() for x in base.parts]
@@ -299,7 +306,7 @@ def revisar_ruta(texto: str, escribir: bool = False, excluidas: list[str] | None
         except OSError:
             return ChequeoRuta(False, "no se pudo revisar la ruta")
         atributos = getattr(st, "st_file_attributes", 0)
-        if stat.S_ISLNK(st.st_mode) or atributos & FILE_ATTRIBUTE_REPARSE_POINT:
+        if stat.S_ISLNK(st.st_mode) or (atributos & FILE_ATTRIBUTE_REPARSE_POINT and not es_nube(st)):
             return ChequeoRuta(False, f"enlace o junction en la ruta ({actual})")
         if atributos & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM):
             return ChequeoRuta(False, f"elemento oculto o de sistema ({actual.name})")

@@ -15,6 +15,7 @@ HERRAMIENTAS_DOC = """Herramientas (una por paso):
 - leer_web {"url": "..."}: lee una página.
 - buscar_memoria {"consulta": "..."}: busca en tus recuerdos, lo aprendido y el contenido de los archivos del usuario.
 - buscar_archivos {"nombre": "..."}: encuentra archivos del usuario por nombre.
+- analizar_carpeta {"ruta": "..."}: estructura, tipos y archivos clave de una carpeta (para entender un proyecto).
 - leer_archivo {"ruta": "..."} / listar {"ruta": "..."}: archivos del usuario.
 - ver_pantalla {"pregunta": "..."}: mira lo que el usuario tiene en pantalla ahora.
 - escribir_archivo {"ruta": "...", "contenido": "..."}: propone escribir (el usuario confirma).
@@ -113,6 +114,6 @@ def prompt_sistema(personalidad: str, estado: str, perfil: str, contexto_relevan
         partes.append("## Herramientas\n" + HERRAMIENTAS_DOC + "\n\nTienes internet: si no sabes algo o depende de datos "
                       "recientes, usa buscar_web antes de responder y cita las páginas. Nunca digas que no tienes acceso a "
                       "internet ni a la pantalla: usa la herramienta. Si el usuario habla de «esto», «aquí» o lo que tiene "
-                      "abierto, usa ver_pantalla. Si menciona un archivo o proyecto suyo, usa buscar_archivos o buscar_memoria. "
+                      "abierto, usa ver_pantalla. Si menciona un archivo o proyecto suyo, usa buscar_archivos o buscar_memoria; si te pide analizar una carpeta, usa analizar_carpeta. "
                       "Nunca inventes datos. Responde en español y corto (1 a 3 frases) salvo que te pidan detalle.")
     return "\n\n".join(partes)

@@ -102,6 +102,26 @@ def unidades() -> list[dict]:
     return salida
 
 
+# ------------------------------------------------------ archivos clave
+
+_CLAVES = ["readme", "package.json", "pyproject.toml", "requirements.txt", "cargo.toml", "build.gradle",
+           "build.gradle.kts", "settings.gradle", "pom.xml", "go.mod", "composer.json", "pubspec.yaml",
+           "androidmanifest.xml", "docker-compose", "dockerfile", "makefile", "main.", "app.", "index.", "program.cs"]
+
+
+def _es_archivo_clave(nombre: str) -> bool:
+    n = nombre.lower()
+    return (any(n.startswith(c) for c in _CLAVES) or n.endswith((".csproj", ".sln"))) and not n.endswith((".exe", ".dll", ".png", ".jpg"))
+
+
+def _prioridad_clave(nombre: str) -> int:
+    n = nombre.lower()
+    for i, c in enumerate(_CLAVES):
+        if n.startswith(c):
+            return i
+    return len(_CLAVES)
+
+
 # ----------------------------------------------------------------- caja
 
 class CajaDeHerramientas:
@@ -204,6 +224,65 @@ class CajaDeHerramientas:
         for d in self.memoria.buscar_documentos(consulta, 5):
             partes.append(f"[archivo {d['ruta']}] {d['fragmento']}")
         return Resultado("\n".join(partes) or "No encontré nada relacionado en mi memoria.", "memoria")
+
+    def h_analizar_carpeta(self, ruta: str) -> Resultado:
+        """Panorama de una carpeta: estructura, tipos de archivo y el contenido de los archivos clave."""
+        chequeo = politica.revisar_ruta(ruta, excluidas=self.config.unidades_excluidas)
+        if not chequeo.ok:
+            return Resultado(f"No puedo leer esa carpeta: {chequeo.motivo}", "carpeta")
+        raiz = chequeo.ruta
+        if not raiz.is_dir():
+            return Resultado(f"No encuentro la carpeta {ruta}.", "carpeta")
+        from collections import Counter
+        from .memoria import CARPETAS_OMITIDAS, EXT_TEXTO, _leer_texto
+
+        tipos: Counter = Counter()
+        arbol: list[str] = []
+        claves: list[Path] = []
+        recientes: list[tuple[float, Path]] = []
+        total = 0
+        for actual, dirs, archivos in os.walk(raiz):
+            dirs[:] = sorted(d for d in dirs if not d.startswith(".") and d.lower() not in CARPETAS_OMITIDAS)
+            nivel = len(Path(actual).relative_to(raiz).parts)
+            if nivel <= 2 and len(arbol) < 80:
+                arbol.append("  " * nivel + (Path(actual).name if nivel else str(raiz)) + os.sep)
+            for nombre in archivos:
+                if nombre.startswith("."):
+                    continue
+                total += 1
+                p = Path(actual) / nombre
+                tipos[p.suffix.lower() or "(sin extensión)"] += 1
+                if nivel <= 1 and len(arbol) < 80:
+                    arbol.append("  " * (nivel + 1) + nombre)
+                if _es_archivo_clave(nombre) and nivel <= 2:
+                    claves.append(p)
+                if p.suffix.lower() in EXT_TEXTO:
+                    try:
+                        recientes.append((p.stat().st_mtime, p))
+                    except OSError:
+                        pass
+            if total > 20000:
+                break
+        partes = [f"Carpeta {raiz}: {total} archivos.",
+                  "Tipos: " + ", ".join(f"{e} {n}" for e, n in tipos.most_common(12)),
+                  "Estructura:\n" + "\n".join(arbol)]
+        recientes.sort(reverse=True)
+        if recientes:
+            partes.append("Modificados hace poco: " + ", ".join(str(p.relative_to(raiz)) for _, p in recientes[:8]))
+        presupuesto = 6000
+        for p in sorted(claves, key=lambda x: (len(x.relative_to(raiz).parts), _prioridad_clave(x.name)))[:6]:
+            if presupuesto <= 0:
+                break
+            if not politica.revisar_ruta(str(p)).ok:
+                continue
+            try:
+                texto = _leer_texto(str(p))[: min(2000, presupuesto)]
+            except (OSError, ValueError):
+                continue
+            presupuesto -= len(texto)
+            partes.append(f"--- {p.relative_to(raiz)}\n{texto}")
+        self.leyo_privado = True
+        return Resultado("\n\n".join(partes), f"carpeta {raiz}")
 
     def h_buscar_archivos(self, nombre: str) -> Resultado:
         rutas = self.memoria.buscar_archivos(nombre)
