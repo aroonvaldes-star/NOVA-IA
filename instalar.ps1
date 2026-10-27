@@ -183,6 +183,15 @@ Bien "Python: $($python -join ' ')"
 
 # ------------------------------------------------------------- 2. Entorno
 
+# Si NOVA esta abierta, sus programas tienen tomados los archivos que vamos a reemplazar.
+$abiertos = Get-Process -Name 'llama-server', 'whisper-cli', 'piper', 'pythonw', 'python' -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -and $_.Path.StartsWith($Datos, [StringComparison]::OrdinalIgnoreCase) }
+if ($abiertos) {
+    Aviso 'NOVA estaba abierta; la cierro para poder actualizarla.'
+    $abiertos | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+}
+
 Paso 'Entorno de NOVA'
 $py = Join-Path $Venv 'Scripts\python.exe'
 $restoPy = @($python | Select-Object -Skip 1)
