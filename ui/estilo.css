@@ -1,0 +1,189 @@
+:root {
+  --texto: #eef3ff;
+  --texto-suave: #b8c4e0;
+  --vidrio: rgba(10, 14, 30, 0.72);
+  --borde: rgba(140, 170, 255, 0.28);
+  --acento: #3b82f6;
+  --peligro: #ef4444;
+  --fondo-pagina: #05070f;
+  font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  color: var(--texto);
+}
+
+/* En el navegador (modo desarrollo) hay fondo; en el escritorio, transparente. */
+body.navegador {
+  background: radial-gradient(ellipse at 50% 40%, #0b1430 0%, var(--fondo-pagina) 70%);
+}
+
+#orbe {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  display: block;
+  pointer-events: none;
+}
+
+.flotante { position: fixed; z-index: 2; }
+
+#subtitulos {
+  max-width: min(560px, 80vw);
+  font-size: 17px;
+  line-height: 1.45;
+  text-align: center;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.9);
+  transform: translate(-50%, 0);
+  transition: opacity 0.6s ease;
+  pointer-events: none;
+  white-space: pre-wrap;
+}
+#subtitulos.oculto { opacity: 0; }
+
+#indicadores {
+  display: flex;
+  gap: 8px;
+  transform: translate(-50%, 0);
+  font-size: 12px;
+  pointer-events: none;
+}
+#indicadores span {
+  background: var(--vidrio);
+  border: 1px solid var(--borde);
+  border-radius: 999px;
+  padding: 2px 9px;
+  color: var(--texto-suave);
+}
+.punto {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--peligro); margin-right: 4px; animation: latido 1s infinite;
+}
+@keyframes latido { 50% { opacity: 0.3; } }
+
+#entrada {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  width: min(520px, 86vw);
+  transform: translate(-50%, 0);
+  background: var(--vidrio);
+  border: 1px solid var(--borde);
+  border-radius: 999px;
+  padding: 6px;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.45), 0 0 24px rgba(59, 130, 246, 0.18);
+  transition: opacity 0.25s ease;
+}
+#entrada.oculto { opacity: 0; pointer-events: none; }
+#entrada input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--texto);
+  font-size: 15px;
+  padding: 6px 4px;
+}
+#entrada button {
+  border: 0;
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--texto);
+  font-size: 15px;
+  cursor: pointer;
+}
+#entrada button:hover { background: rgba(255, 255, 255, 0.16); }
+#microfono.grabando { background: var(--peligro); }
+
+#tarjetas {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(460px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  z-index: 3;
+}
+.tarjeta {
+  background: var(--vidrio);
+  border: 1px solid var(--borde);
+  border-radius: 14px;
+  padding: 12px 14px;
+  backdrop-filter: blur(16px);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  font-size: 14px;
+  line-height: 1.45;
+  animation: aparecer 0.25s ease;
+}
+@keyframes aparecer { from { opacity: 0; transform: translateY(8px); } }
+.tarjeta header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--texto-suave);
+}
+.tarjeta header button {
+  background: none; border: 0; color: var(--texto-suave); cursor: pointer; font-size: 14px; margin-left: 4px;
+}
+.tarjeta pre, .tarjeta code {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12.5px;
+}
+.tarjeta pre {
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 8px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.tarjeta .cuerpo p { margin: 0 0 8px; }
+.tarjeta a { color: #93c5fd; }
+.confirmacion { border-color: rgba(245, 158, 11, 0.7); }
+.confirmacion .codigo { font-size: 20px; letter-spacing: 3px; color: #fcd34d; }
+.confirmacion footer { display: flex; gap: 8px; justify-content: flex-end; }
+.confirmacion footer button {
+  border: 1px solid var(--borde); background: rgba(255, 255, 255, 0.08); color: var(--texto);
+  border-radius: 8px; padding: 6px 14px; cursor: pointer; font-size: 14px;
+}
+.confirmacion footer .si { background: #b45309; border-color: #f59e0b; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tarjeta { animation: none; }
+  .punto { animation: none; }
+}
+
+@media (prefers-contrast: more) {
+  :root { --vidrio: #000; --borde: #fff; --texto-suave: #fff; }
+}
+
+body.navegador #entrada { left: 50%; bottom: 28px; }
+
+/* ------------------------------------------------------------- celular */
+body.celular { background: radial-gradient(ellipse at 50% 30%, #0b1430 0%, var(--fondo-pagina) 70%); }
+body.celular #subtitulos {
+  left: 50% !important; top: 46vh !important; width: calc(100vw - 32px); max-width: none; font-size: 16px;
+}
+body.celular #indicadores { left: 50% !important; top: 12px !important; }
+body.celular #entrada {
+  left: 50% !important; top: auto !important; bottom: max(16px, env(safe-area-inset-bottom)); width: calc(100vw - 32px);
+}
+body.celular #tarjetas {
+  left: 16px; right: 16px; width: auto; bottom: 84px; max-height: 40vh;
+}
+body.celular #microfono { width: 44px; height: 44px; }
