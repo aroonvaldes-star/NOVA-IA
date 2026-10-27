@@ -42,6 +42,7 @@ def crear_servidor(nova: Nova, puerto: int | None = None, carpeta_ui: Path = UI,
     class Manejador(BaseHTTPRequestHandler):
         server_version = "NOVA"
         sys_version = ""
+        timeout = 30 if celular else None  # que un cliente lento de la red no deje hilos colgados
 
         def log_message(self, *args):  # silencioso
             pass
@@ -209,13 +210,20 @@ def crear_servidor(nova: Nova, puerto: int | None = None, carpeta_ui: Path = UI,
                 return self._json({"error": str(exc)}, 400)
             return self._json({"error": "no existe"}, 404)
 
-    servidor = ThreadingHTTPServer(("0.0.0.0" if celular else "127.0.0.1", puerto), Manejador)
-    servidor.daemon_threads = True
+    tls = None
     if celular:
         from .celular import contexto_tls
         tls = contexto_tls(nova.config.rutas.datos)
-        if tls:
-            servidor.socket = tls.wrap_socket(servidor.socket, server_side=True)
-        servidor.https = bool(tls)  # type: ignore[attr-defined]
+        if not tls:
+            # Falla cerrada: sin cifrado, la llave del celular viajaría en claro por el Wi-Fi.
+            raise RuntimeError("Para conectar el celular falta la biblioteca «cryptography» (cifrado). "
+                               "Instálala con: pip install cryptography")
+    servidor = ThreadingHTTPServer(("0.0.0.0" if celular else "127.0.0.1", puerto), Manejador)
+    servidor.daemon_threads = True
+    if tls:
+        # El saludo TLS se hace en el hilo de cada petición, no en el que acepta conexiones:
+        # así un cliente que no termina el saludo no bloquea a los demás.
+        servidor.socket = tls.wrap_socket(servidor.socket, server_side=True, do_handshake_on_connect=False)
+    servidor.https = bool(tls)  # type: ignore[attr-defined]
     servidor.token = token  # type: ignore[attr-defined]
     return servidor

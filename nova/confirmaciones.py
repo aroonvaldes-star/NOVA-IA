@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 CADUCIDAD_S = 600
+FALLOS_MAX = 5  # códigos equivocados seguidos antes de anular todas las propuestas
 
 
 @dataclass
@@ -33,6 +34,7 @@ class Confirmaciones:
     def __init__(self) -> None:
         self._pendientes: dict[str, Pendiente] = {}
         self._cerrojo = threading.Lock()
+        self._fallos = 0
 
     def pedir(self, descripcion: str, accion: Callable[[], Any], solo_clic: bool = False) -> Pendiente:
         with self._cerrojo:
@@ -50,10 +52,18 @@ class Confirmaciones:
             self._limpiar()
             p = self._pendientes.get(codigo.strip())
             if not p:
+                # Con 4 cifras, probar códigos al azar acabaría acertando: tras varios
+                # fallos seguidos se anulan todas las propuestas pendientes.
+                self._fallos += 1
+                if self._fallos >= FALLOS_MAX:
+                    self._pendientes.clear()
+                    self._fallos = 0
+                    return {"ok": False, "salida": "Demasiados códigos equivocados: anulé todas las propuestas pendientes."}
                 return {"ok": False, "salida": "Código inválido o caducado."}
             if por_voz and p.solo_clic:
                 return {"ok": False, "salida": "Esta acción solo se confirma con clic o teclado."}
             del self._pendientes[p.codigo]
+            self._fallos = 0
         resultado = p.accion()
         return resultado if isinstance(resultado, dict) else {"ok": True, "salida": str(resultado)}
 

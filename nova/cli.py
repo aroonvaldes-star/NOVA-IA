@@ -96,7 +96,10 @@ def cmd_servidor(a) -> int:
 
     nova.iniciar_celular = iniciar_celular
     if nova.config.celular:
-        print(f"Celular: {iniciar_celular()}")
+        try:
+            print(f"Celular: {iniciar_celular()}")
+        except RuntimeError as exc:
+            print(f"Celular: no disponible. {exc}")
     url = f"http://127.0.0.1:{puerto}/"
     print(f"NOVA {__version__} escuchando en {url} (motor: {nova.motor.nombre}, modelo: {nova.motor.modelo or 'ninguno'})")
     if a.abrir:
