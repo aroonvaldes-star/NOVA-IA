@@ -30,6 +30,10 @@ DEFECTO: dict[str, Any] = {
     "gpu_layers": 99,
     "server_idle_seconds": 600,
     "motor": "auto",  # auto | llama | simulado
+    # Cerebro grande: un llama-server en otro equipo (Oracle Cloud por Tailscale). Solo con «piénsalo bien: …»
+    "cerebro_endpoint": "",
+    "cerebro_clave": "",
+    "cerebro_modelo": "Qwen3 8B en Oracle",
     # Servidor de la interfaz
     "web_port": 8190,
     # Conexión directa con el celular (red local, solo dispositivos emparejados)

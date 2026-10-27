@@ -31,7 +31,7 @@ from .confirmaciones import Confirmaciones
 from .herramientas import CajaDeHerramientas, envolver
 from .internet import Internet
 from .memoria import Memoria
-from .motor import Motor, MotorSimulado, elegir
+from .motor import Motor, MotorRemoto, MotorSimulado, elegir
 from .voz import Voz, orden_rapida, para_hablar
 
 NO_SABE = re.compile(r"\b(no (lo )?s[eé]\b|no tengo (esa )?informaci[oó]n|no estoy segur[ao]|no conozco|"
@@ -43,6 +43,9 @@ RECIENTE = re.compile(r"\b(hoy|ahorita|actual(es|mente)?|[uú]ltim[oa]s?|recient
                       r"clima|cotizaci[oó]n|d[oó]lar|qui[eé]n gan[oó]|marcador|estreno|lanzamiento|sali[oó]|nueva versi[oó]n|"
                       r"20(2[5-9]|3\d)|esta semana|este (mes|a[nñ]o)|busca|investiga|googlea|en internet|en la web)\b", re.I)
 URL = re.compile(r"https?://[^\s<>\"']+")
+# «Piénsalo bien: …» manda esa pregunta al cerebro grande (otro equipo, más listo y más lento).
+PIENSALO = re.compile(r"^\s*(?:oye,?\s*)?(?:nova,?\s*)?(?:pi[eé]nsalo (?:bien|a fondo)|con (?:tu|el) cerebro grande|"
+                      r"usa (?:tu|el) cerebro grande|cerebro grande)\s*[:,.]?\s*", re.I)
 ACCION = re.compile(r"^\s*ACCI[OÓ]N\s*:\s*(\{.*\})", re.S | re.I)
 FINAL = re.compile(r"^\s*FINAL\s*:\s*", re.I)
 
@@ -80,10 +83,11 @@ class Bus:
 
 class Nova:
     def __init__(self, config: Config, motor: Motor | None = None, memoria: Memoria | None = None,
-                 internet: Internet | None = None):
+                 internet: Internet | None = None, cerebro: Motor | None = None):
         self.config = config
         config.rutas.crear()
         self.motor = motor or elegir(config)
+        self.cerebro = cerebro or (MotorRemoto(config) if config.cerebro_endpoint else None)
         self.memoria = memoria or Memoria(config.rutas.datos / "nova.db")
         self.internet = internet or Internet(config)
         self.confirmaciones = Confirmaciones()
@@ -142,7 +146,7 @@ class Nova:
                 rapida = orden_rapida(texto)
                 respuesta = self._orden_rapida(rapida, texto, por_voz) if rapida else None
                 if respuesta is None:
-                    respuesta = self._pensar(texto, ctx)
+                    respuesta = self._pensar_con_cerebro(texto, ctx) if PIENSALO.match(texto) else self._pensar(texto, ctx)
             except Exception as exc:  # noqa: BLE001 - NOVA explica el error en vez de caerse
                 respuesta = f"Algo falló de mi lado: {exc}"
                 self.bus.publicar({"tipo": "error", "texto": str(exc)})
@@ -223,7 +227,28 @@ class Nova:
             partes.append(f"- (conversación {dt.date.fromtimestamp(c['fecha'])}, {c['rol']}) {c['texto'][:300]}")
         return envolver("memoria", "\n".join(partes)) if partes else ""
 
-    def _pensar(self, texto: str, ctx: str, sembrado: list[dict] | None = None) -> str:
+    def _pensar_con_cerebro(self, texto: str, ctx: str) -> str:
+        pregunta = PIENSALO.sub("", texto, count=1).strip() or texto
+        if not self.cerebro:
+            self.bus.publicar({"tipo": "aviso", "texto": "Todavía no tengo cerebro grande configurado; lo pienso con mi modelo de siempre."})
+            return self._pensar(pregunta, ctx)
+        self.bus.publicar({"tipo": "aviso", "texto": f"Lo pienso con mi cerebro grande ({self.cerebro.modelo}). Puede tardar unos minutos."})
+        try:
+            return self._pensar(pregunta, ctx, motor=self.cerebro)
+        except (RuntimeError, OSError) as exc:
+            self.bus.publicar({"tipo": "aviso", "texto": f"No pude usar el cerebro grande ({exc}); lo pienso aquí."})
+            return self._pensar(pregunta, ctx)
+
+    def _pensar(self, texto: str, ctx: str, sembrado: list[dict] | None = None, motor: Motor | None = None) -> str:
+        motor = motor or self.motor
+        vision_antes = self.herramientas.vision
+        self.herramientas.vision = vision_antes and bool(getattr(motor, "vision", False))
+        try:
+            return self._pensar_con(motor, texto, ctx, sembrado)
+        finally:
+            self.herramientas.vision = vision_antes
+
+    def _pensar_con(self, motor: Motor, texto: str, ctx: str, sembrado: list[dict] | None) -> str:
         if not self.memoria.privado and self.config.memoria_personal:
             nuevos = aprendizaje.aprender_por_reglas(self.memoria, texto)
             if nuevos:
@@ -232,8 +257,11 @@ class Nova:
         self.observador.anotar(pantalla.ventana_activa())
         sistema = personalidad.prompt_sistema(
             self.personalidad,
-            personalidad.estado_propio(self.motor.nombre, self.motor.modelo, en_linea, self.memoria.estado(), self.voz.capacidades(),
-                                       vision=self.herramientas.vision, entorno=self.observador.resumen()),
+            personalidad.estado_propio(motor.nombre, motor.modelo, en_linea, self.memoria.estado(), self.voz.capacidades(),
+                                       vision=self.herramientas.vision,
+                                       entorno=self.observador.resumen() + (
+                                           " Para tareas difíciles tengo un cerebro grande en otro equipo, más lento: el usuario "
+                                           "lo usa empezando con «piénsalo bien:». Puedo sugerírselo." if self.cerebro and motor is not self.cerebro else "")),
             self.memoria.perfil(self.config.perfil_max_chars) if self.config.memoria_personal else "",
             self._contexto_relevante(texto),
         )
@@ -243,7 +271,7 @@ class Nova:
         busco, reintento, ultima_accion = bool(sembrado), False, None
         for _ in range(int(self.config.agente_max_pasos)):
             self._estado("procesando", ctx)
-            salida = sin_pensamientos(self.motor.chat(mensajes, al_token=self._emisor()))
+            salida = sin_pensamientos(motor.chat(mensajes, al_token=self._emisor()))
             m = ACCION.match(salida)
             if m:
                 try:

@@ -239,7 +239,7 @@ class MotorLlama(Motor):
             "temperature": temperatura, "max_tokens": max_tokens,
         }).encode()
         peticion = urllib.request.Request(self.endpoint + "/v1/chat/completions", data=cuerpo,
-                                          headers={"Content-Type": "application/json"})
+                                          headers={"Content-Type": "application/json", **self._cabeceras()})
         texto = []
         with urllib.request.urlopen(peticion, timeout=600) as r:
             for linea in r:
@@ -260,6 +260,9 @@ class MotorLlama(Motor):
                 self._ultimo_uso = time.monotonic()
         return "".join(texto)
 
+    def _cabeceras(self) -> dict:
+        return {}
+
     def embeddings(self, textos: list[str]) -> list[list[float]] | None:
         """Embeddings si el servidor los ofrece (llama-server --embedding). Si no, None."""
         try:
@@ -270,6 +273,50 @@ class MotorLlama(Motor):
                 return [d["embedding"] for d in json.load(r)["data"]]
         except (urllib.error.URLError, OSError, ValueError, KeyError, RuntimeError):
             return None
+
+
+class MotorRemoto(MotorLlama):
+    """El «cerebro grande»: un llama-server en otro equipo (por ejemplo, Oracle Cloud por Tailscale).
+
+    Solo se usa cuando lo pides («piénsalo bien: …»). No lo arranca ni lo apaga NOVA.
+    """
+
+    nombre = "cerebro grande"
+
+    def __init__(self, config: Config):
+        self.config = config
+        self.endpoint = config.cerebro_endpoint.rstrip("/")
+        self.binario = None
+        self.ruta_modelo = None
+        self.modelo = config.cerebro_modelo or "remoto"
+        self.mmproj = None
+        self.vision = False
+        self._proceso = None
+        self._trabajo = None
+        self._ultimo_uso = time.monotonic()
+        self._cerrojo = threading.Lock()
+        self._vigilante = None
+
+    def _cabeceras(self) -> dict:
+        return {"Authorization": f"Bearer {self.config.cerebro_clave}"} if self.config.cerebro_clave else {}
+
+    def _responde(self) -> bool:
+        try:
+            req = urllib.request.Request(self.endpoint + "/health", headers=self._cabeceras())
+            with urllib.request.urlopen(req, timeout=4) as r:
+                return r.status == 200
+        except (urllib.error.URLError, OSError, ValueError):
+            return False
+
+    def disponible(self) -> bool:
+        return self._responde()
+
+    def asegurar(self) -> None:
+        if not self._responde():
+            raise RuntimeError(f"El cerebro grande ({self.endpoint}) no responde. ¿Está encendido el servidor y conectado Tailscale?")
+
+    def detener(self) -> None:
+        pass
 
 
 def buscar_binario(config: Config) -> Path | None:

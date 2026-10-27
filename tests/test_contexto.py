@@ -182,3 +182,82 @@ def test_onedrive_no_cuenta_como_enlace():
     assert not es_nube(SimpleNamespace(st_reparse_tag=0xA000000C))  # enlace simbólico
     assert not es_nube(SimpleNamespace(st_reparse_tag=0xA0000003))  # junction
     assert not es_nube(os.stat("."))
+
+
+def test_piensalo_bien_usa_el_cerebro_grande(config, internet_falso):
+    from nova.motor import MotorSimulado
+
+    local, grande = MotorSimulado(["FINAL: local"]), MotorSimulado(["FINAL: Respuesta pensada a fondo."])
+    grande.vision = False
+    nova = Nova(config, motor=local, internet=internet_falso, cerebro=grande)
+    try:
+        assert nova.procesar("Piénsalo bien: ¿cómo organizo NOVORA-LINK?") == "Respuesta pensada a fondo."
+        assert grande.recibidos and not local.recibidos
+        assert grande.recibidos[0][-1]["content"] == "¿cómo organizo NOVORA-LINK?"
+        assert nova.procesar("hola") == "local"  # lo demás sigue en el modelo de la PC
+        assert "piénsalo bien" in local.recibidos[0][0]["content"]  # sabe que puede sugerirlo
+    finally:
+        nova.cerrar()
+        nova.memoria.cerrar()
+
+
+def test_si_el_cerebro_grande_no_responde_piensa_local(config, internet_falso):
+    from nova.motor import MotorSimulado
+
+    class Caido(MotorSimulado):
+        modelo = "Qwen3 8B en Oracle"
+
+        def chat(self, *a, **k):
+            raise RuntimeError("no responde")
+
+    nova = Nova(config, motor=MotorSimulado(["FINAL: Lo pensé aquí."]), internet=internet_falso, cerebro=Caido())
+    eventos = nova.bus.suscribir()
+    try:
+        assert nova.procesar("piénsalo bien, ¿qué hago?") == "Lo pensé aquí."
+        avisos = []
+        while not eventos.empty():
+            e = eventos.get()
+            if e["tipo"] == "aviso":
+                avisos.append(e["texto"])
+        assert any("No pude usar el cerebro grande" in a for a in avisos)
+    finally:
+        nova.cerrar()
+        nova.memoria.cerrar()
+
+
+def test_motor_remoto_manda_la_clave(config):
+    import http.server
+    import threading
+
+    from nova.motor import MotorRemoto
+
+    vistos = []
+
+    class Manejador(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            vistos.append(self.headers.get("Authorization"))
+            self.send_response(200)
+            self.end_headers()
+
+        def do_POST(self):
+            vistos.append(self.headers.get("Authorization"))
+            self.rfile.read(int(self.headers["Content-Length"]))
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            self.wfile.write(b'data: {"choices":[{"delta":{"content":"FINAL: hola"}}]}\n\ndata: [DONE]\n\n')
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), Manejador)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        config["cerebro_endpoint"] = f"http://127.0.0.1:{srv.server_address[1]}"
+        config["cerebro_clave"] = "secreta"
+        m = MotorRemoto(config)
+        assert m.disponible()
+        assert m.chat([{"role": "user", "content": "hola"}]) == "FINAL: hola"
+        assert vistos == ["Bearer secreta"] * 3
+    finally:
+        srv.shutdown()
