@@ -182,11 +182,18 @@ if ($instalada -ne $VersionOmni) {
         Stop-Process -Force -ErrorAction SilentlyContinue
     Write-Host '   ... instalando (pesa unos 500 MB, tarda unos minutos)'
     # Sin -Wait: ese espera tambien a los procesos que deje npm vivos y se puede quedar colgado.
-    $r = Start-Process -FilePath $Node -PassThru -NoNewWindow -WorkingDirectory $Datos -ArgumentList @(
-        "`"$Npm`"", 'install', '-g', '--prefix', "`"$Omni`"", '--no-fund', '--no-audit', '--loglevel', 'error',
+    $npmLog = Join-Path $Estado 'omniroute-npm.log'
+    $npmErr = Join-Path $Estado 'omniroute-npm-errores.log'
+    $r = Start-Process -FilePath $Node -PassThru -NoNewWindow -WorkingDirectory $Datos `
+        -RedirectStandardOutput $npmLog -RedirectStandardError $npmErr -ArgumentList @(
+        "`"$Npm`"", 'install', '-g', '--prefix', "`"$Omni`"", '--no-fund', '--no-audit', '--loglevel', 'warn',
         "--allow-scripts=$PermitirScripts", "omniroute@$VersionOmni")
+    $null = $r.Handle  # sin esto Windows PowerShell a veces no da el codigo de salida
     $r.WaitForExit()
-    if ($r.ExitCode -ne 0 -or -not (Test-Path $Cli)) { throw "npm no pudo instalar OmniRoute (salio con $($r.ExitCode))." }
+    if ($r.ExitCode -ne 0 -or -not (Test-Path $Cli)) {
+        $cola = @(); foreach ($f in $npmLog, $npmErr) { if (Test-Path $f) { $cola += Get-Content $f -Tail 20 } }
+        throw ("npm no pudo instalar OmniRoute (salio con $($r.ExitCode)). Ultimas lineas:`n" + ($cola -join "`n"))
+    }
 }
 Bien "OmniRoute $VersionOmni en $Omni"
 

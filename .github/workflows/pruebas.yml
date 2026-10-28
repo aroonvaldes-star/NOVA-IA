@@ -64,10 +64,10 @@ jobs:
           '{"cerebro_endpoint":"https://api.groq.com/openai/v1","cerebro_clave":"gsk_prueba_falsa_0123456789abcdef","cerebro_auto":false,"internet":true}' |
             Set-Content -Encoding ascii "$env:APPDATA\NOVA\config.json"
           # En otro proceso con limite de tiempo: si se cuelga, igual se ve en que paso iba.
-          $p = Start-Process powershell -ArgumentList '-NoProfile -ExecutionPolicy Bypass -Command "& .\omniroute.ps1 -SinPreguntas *>&1 | Out-File -Encoding utf8 salida.txt; exit $LASTEXITCODE"' -PassThru -NoNewWindow
+          $p = Start-Process powershell -ArgumentList '-NoProfile -ExecutionPolicy Bypass -Command "try { & .\omniroute.ps1 -SinPreguntas *>&1 | Out-File -Encoding utf8 salida.txt } catch { (''ERROR: '' + $_.Exception.Message) | Out-File -Append -Encoding utf8 salida.txt }"' -PassThru -NoNewWindow
           $termino = $p.WaitForExit(1500 * 1000)
           if (Test-Path salida.txt) { Get-Content salida.txt | Where-Object { $_.Trim() } | Select-Object -Last 40 | ForEach-Object { Write-Host "::notice::$($_ -replace '[\r\n]', ' ')" } }
-          foreach ($f in "$env:LOCALAPPDATA\NOVA\estado\omniroute.log", "$env:LOCALAPPDATA\NOVA\estado\omniroute-errores.log") {
+          foreach ($f in "$env:LOCALAPPDATA\NOVA\estado\omniroute.log", "$env:LOCALAPPDATA\NOVA\estado\omniroute-errores.log", "$env:LOCALAPPDATA\NOVA\estado\omniroute-npm-errores.log") {
             if (Test-Path $f) { Get-Content $f -Tail 12 | ForEach-Object { Write-Host "::notice::$(Split-Path $f -Leaf): $($_ -replace '[\r\n]', ' ')" } }
           }
           if (-not $termino) { Write-Host '::error::omniroute.ps1 no termino en 25 minutos'; Get-Process node, npm -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "::error::sigue vivo: $($_.Name) $($_.Id)" }; exit 1 }
