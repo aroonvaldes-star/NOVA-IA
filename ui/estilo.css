@@ -275,7 +275,9 @@ body.celular #charla {
 body.celular #microfono { width: 44px; height: 44px; }
 
 /* ------------------------------------------- escritorio (Tauri, transparente) */
-body.escritorio #charla { width: min(460px, 40vw); max-height: 56vh; }
+body.escritorio #charla { width: min(640px, 46vw); max-height: 70vh; }
+body.escritorio #entrada { display: none; }  /* en el escritorio se escribe en la barra, que se pega aquí abajo */
+body.escritorio .msg { font-size: 16px; }
 /* Sobre cualquier fondo de escritorio: vidrio oscuro detrás del texto y el orbe con contorno. */
 body.escritorio #conversacion {
   transition: opacity 0.6s ease;

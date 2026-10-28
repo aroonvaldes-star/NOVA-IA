@@ -30,6 +30,8 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 const PUERTO: u16 = 8190;
 
 struct Zonas(Mutex<Vec<[f64; 4]>>);
+/// Dónde va la barra: justo debajo de la conversación (x, y, ancho en píxeles de la página del orbe).
+struct AnclaBarra(Mutex<Option<[f64; 3]>>);
 struct Nucleo(Mutex<Option<Child>>);
 
 /// Anota en estado\escritorio.log (la app no tiene consola donde verlo).
@@ -57,8 +59,21 @@ fn zonas(estado: tauri::State<'_, Zonas>, zonas: Vec<[f64; 4]>) {
 }
 
 #[tauri::command]
+fn anclar_barra(estado: tauri::State<'_, AnclaBarra>, x: f64, y: f64, ancho: f64) {
+    if let Ok(mut a) = estado.0.lock() {
+        *a = Some([x, y, ancho]);
+    }
+}
+
+#[tauri::command]
 fn abrir_barra(app: AppHandle) {
     mostrar_barra(&app, true);
+}
+
+/// Desde la barra: sube o baja la conversación que está junto al orbe (rueda, touchpad o flechas).
+#[tauri::command]
+fn desplazar(app: AppHandle, dy: f64) {
+    let _ = app.emit_to("orbe", "desplazar", dy);
 }
 
 #[tauri::command]
@@ -74,12 +89,24 @@ fn mostrar_barra(app: &AppHandle, visible: bool) {
     };
     if visible {
         anotar("Abro la barra para escribir.");
+        // Pegada debajo de la conversación, del mismo ancho: se ve como parte del diálogo.
+        let ancla = app.state::<AnclaBarra>().0.lock().ok().and_then(|a| *a);
+        if let (Some([x, y, ancho]), Some(orbe)) = (ancla, app.get_webview_window("orbe")) {
+            if let (Ok(pos), Ok(escala)) = (orbe.outer_position(), orbe.scale_factor()) {
+                let origen = pos.to_logical::<f64>(escala);
+                let _ = b.set_size(tauri::LogicalSize::new(ancho.max(360.0), 64.0));
+                let _ = b.set_position(tauri::LogicalPosition::new(origen.x + x, origen.y + y));
+            }
+        }
+        let _ = app.emit_to("orbe", "barra", true);
         let _ = b.show();
         let _ = b.unminimize();
         let _ = b.set_focus();
         let _ = b.emit("enfocar", ());
+        let _ = app.emit_to("orbe", "despertar", ());
     } else {
         let _ = b.hide();
+        let _ = app.emit_to("orbe", "barra", false);
     }
 }
 
@@ -214,7 +241,7 @@ fn crear_ventana(app: &AppHandle) -> tauri::Result<()> {
         .skip_taskbar(true)
         .shadow(false)
         .resizable(false)
-        .inner_size(620.0, 76.0)
+        .inner_size(620.0, 64.0)
         .visible(false)
         .build()?;
     if let Some(monitor) = barra.primary_monitor()? {
@@ -269,6 +296,7 @@ fn main() {
 
     let app = tauri::Builder::default()
         .manage(Zonas(Mutex::new(Vec::new())))
+        .manage(AnclaBarra(Mutex::new(None)))
         .manage(Nucleo(Mutex::new(None)))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
@@ -284,7 +312,7 @@ fn main() {
                 })
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![zonas, abrir_barra, cerrar_barra])
+        .invoke_handler(tauri::generate_handler![zonas, anclar_barra, abrir_barra, cerrar_barra, desplazar])
         .setup(move |app| {
             let handle = app.handle().clone();
             arrancar_nucleo(&handle);

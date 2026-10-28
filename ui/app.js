@@ -19,7 +19,7 @@ if (MODO === 'navegador' || MODO === 'barra') document.body.classList.add(MODO);
 const $ = (s) => document.querySelector(s);
 const entrada = $('#entrada'), campo = $('#texto');
 const orbe = new Orbe($('#orbe'), { libre: MODO !== 'celular' });
-if (MODO !== 'escritorio') campo.placeholder = MODO === 'barra' ? 'Escríbele a NOVA… (Esc para cerrar)' : 'Escríbele a NOVA…';
+if (MODO !== 'escritorio') campo.placeholder = MODO === 'barra' ? 'Escríbele a NOVA… (↑↓ mueven la plática · Esc cierra)' : 'Escríbele a NOVA…';
 
 let tokenCelular = null;
 try { tokenCelular = localStorage.getItem('nova-dispositivo'); } catch { /* sin almacenamiento */ }
@@ -416,7 +416,8 @@ orbe.alMover = ({ x, y, r }) => {
   const ancho = charla.offsetWidth;
   const derecha = x + r * 1.4 + ancho + 24 < innerWidth;
   charla.style.left = `${derecha ? x + r * 1.4 : Math.max(16, x - r * 1.4 - ancho)}px`;
-  charla.style.top = `${Math.min(Math.max(16, y - charla.offsetHeight / 2), innerHeight - charla.offsetHeight - 16)}px`;
+  // Deja 90 px abajo para la barra de escribir, que se pega debajo de la conversación.
+  charla.style.top = `${Math.max(16, Math.min(y - charla.offsetHeight / 2, innerHeight - charla.offsetHeight - 90))}px`;
 };
 if (MODO !== 'celular') addEventListener('mousemove', (ev) => orbe.moverCursor(ev.clientX, ev.clientY));
 
@@ -544,6 +545,15 @@ if (MODO === 'barra') {
   // Solo la barra: siempre visible y con el cursor listo para escribir.
   mostrarEntrada(true);
   TAURI.event.listen('enfocar', () => { campo.value = ''; campo.focus(); });
+  // La conversación vive junto al orbe: desde aquí la subes y bajas con la rueda, el touchpad o las flechas.
+  addEventListener('wheel', (ev) => {
+    ev.preventDefault();
+    TAURI.core.invoke('desplazar', { dy: ev.deltaMode === 1 ? ev.deltaY * 32 : ev.deltaY }).catch(() => {});
+  }, { passive: false });
+  addEventListener('keydown', (ev) => {
+    const paso = { ArrowUp: -60, ArrowDown: 60, PageUp: -400, PageDown: 400 }[ev.key];
+    if (paso) { ev.preventDefault(); TAURI.core.invoke('desplazar', { dy: paso }).catch(() => {}); }
+  });
   addEventListener('focus', () => campo.focus());
   // Si das clic en otra parte, se esconde (con un respiro, por si el foco solo cambia de lugar dentro).
   addEventListener('blur', () => setTimeout(() => {
@@ -557,12 +567,22 @@ if (MODO === 'escritorio') {
   const { listen } = TAURI.event;
   const { invoke } = TAURI.core;
   listen('cursor', (e) => orbe.moverCursor(e.payload.x, e.payload.y));
+  listen('despertar', () => despertar());
+  // Mientras escribes, el orbe y la plática se quedan quietos para que la barra quede pegada debajo.
+  listen('barra', (e) => {
+    const p = orbe.posicion();
+    orbe.anclar(Boolean(e.payload), e.payload ? { x: p.x, y: p.y } : null);
+  });
+  listen('desplazar', (e) => { despertar(); conversacion.scrollBy({ top: Number(e.payload) || 0 }); });
+  // Con la rueda o el touchpad encima, la conversación despierta y se desplaza.
+  conversacion.addEventListener('wheel', () => despertar(), { passive: true });
   listen('hablar', (e) => (e.payload.activo ? empezarGrabacion() : terminarGrabacion()));
   // Clic en el orbe: abre la barra para escribirle.
   const toque = $('#toque');
   toque.hidden = false;
   $('#halo').hidden = false;
   toque.addEventListener('click', () => invoke('abrir_barra').catch(() => {}));
+  toque.addEventListener('mouseenter', () => despertar());  // al pasar sobre el orbe, la plática vuelve y se puede desplazar
   if (!localStorageSeguro('nova-pista-escritorio')) {
     mensaje('sistema', 'Dame clic para escribirme, o usa Ctrl+Alt+A. Para hablarme, mantén Ctrl+Alt+Espacio.');
     despertar();
@@ -578,6 +598,14 @@ if (MODO === 'escritorio') {
     agregar(toque);
     if (!conversacion.classList.contains('dormida')) agregar(conversacion);
     invoke('zonas', { zonas }).catch(() => {});
+    // La barra se abre justo debajo de la conversación (o del orbe si todavía no hay plática).
+    const c = $('#charla').getBoundingClientRect();
+    const r = conversacion.getBoundingClientRect();
+    const ancla = r.height ? { x: r.left, y: r.bottom + 8, ancho: r.width } : (() => {
+      const o = orbe.posicion();
+      return { x: Math.max(8, o.x - 300), y: Math.min(innerHeight - 80, o.y + o.r * 1.6), ancho: 600 };
+    })();
+    if (c.width || r.height) invoke('anclar_barra', ancla).catch(() => {});
   }, 120);
 }
 

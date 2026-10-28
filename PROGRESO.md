@@ -98,6 +98,8 @@ Me pediste una sola actualización con todo lo que habías pedido, y que fuera l
 
 - **Libre en el escritorio.** El acceso «NOVA» abre el orbe flotando sobre tus ventanas; «NOVA en ventana» la abre como antes. GitHub compila el orbe, así que no necesitas Rust.
 - **Escribirle es fácil.** Clic en el orbe, Alt Gr+A o clic en su icono junto al reloj abren una barrita abajo al centro que sí recibe el teclado. Se esconde al enviar o con Esc.
+- **Diálogo más grande y sin la barra que no servía.** La conversación es más ancha y alta, con letra más grande. La barra para escribir se pega justo debajo de ella y sí recibe el teclado.
+- **Subir y bajar la plática** con el touchpad o la rueda, encima de la conversación o encima de la barra, o con las flechas y Re Pág/Av Pág mientras escribes.
 - **Alt Gr+Q** (o Ctrl+Shift+Q) esconde el orbe y lo vuelve a sacar. Mientras NOVA está abierta, Alt Gr+Q no escribe @ (así lo elegiste).
 - **Quieta mientras habla o piensa** (antes se iba al centro).
 - **Contraste.** El texto va sobre un vidrio oscuro y el orbe trae un velo detrás, para verse sobre cualquier fondo.
