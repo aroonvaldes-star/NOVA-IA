@@ -1,5 +1,7 @@
 # Cerebro grande gratis con Groq (rápido, con límites)
 
+> **Mejor opción desde la 1.5:** OmniRoute junta Groq con otros proveedores gratis y cambia solo cuando uno se agota. Ver `OMNIROUTE.md`.
+
 No existen servidores gratis con GPU para dejar un modelo grande prendido todo el día (Oracle Always Free no trae GPU; Colab y Kaggle se apagan solos). Lo que sí existe son **APIs gratis** de modelos grandes. La mejor para NOVA hoy es **Groq**: muy rápida, buena con código y compatible con NOVA sin cambiar nada.
 
 **Importante:** lo que le preguntes a NOVA con el cerebro grande, incluido código o archivos, sale de tu PC hacia Groq. Groq dice que no entrena con tus datos, pero guarda registros hasta 30 días. Si no hay internet o se acaba el límite, NOVA contesta con su modelo local.

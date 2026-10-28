@@ -63,16 +63,16 @@ jobs:
           New-Item -ItemType Directory -Force "$env:APPDATA\NOVA" | Out-Null
           '{"cerebro_endpoint":"https://api.groq.com/openai/v1","cerebro_clave":"gsk_prueba_falsa_0123456789abcdef","cerebro_auto":false,"internet":true}' |
             Set-Content -Encoding ascii "$env:APPDATA\NOVA\config.json"
-          try { & .\omniroute.ps1 -SinPreguntas *>&1 | Tee-Object -FilePath salida.txt }
-          catch {
-            Write-Host "::error::$($_.Exception.Message -replace '[\r\n]+', ' | ')"
-            if (Test-Path salida.txt) { Get-Content salida.txt -Tail 25 | ForEach-Object { Write-Host "::error::$($_ -replace '[\r\n]', ' ')" } }
-            foreach ($f in "$env:LOCALAPPDATA\NOVA\estado\omniroute.log", "$env:LOCALAPPDATA\NOVA\estado\omniroute-errores.log") {
-              if (Test-Path $f) { Get-Content $f -Tail 15 | ForEach-Object { Write-Host "::error::$(Split-Path $f -Leaf): $($_ -replace '[\r\n]', ' ')" } }
-            }
-            exit 1
+          # En otro proceso con limite de tiempo: si se cuelga, igual se ve en que paso iba.
+          $p = Start-Process powershell -ArgumentList '-NoProfile -ExecutionPolicy Bypass -Command "& .\omniroute.ps1 -SinPreguntas *>&1 | Out-File -Encoding utf8 salida.txt; exit $LASTEXITCODE"' -PassThru -NoNewWindow
+          $termino = $p.WaitForExit(1500 * 1000)
+          if (Test-Path salida.txt) { Get-Content salida.txt | Where-Object { $_.Trim() } | Select-Object -Last 40 | ForEach-Object { Write-Host "::notice::$($_ -replace '[\r\n]', ' ')" } }
+          foreach ($f in "$env:LOCALAPPDATA\NOVA\estado\omniroute.log", "$env:LOCALAPPDATA\NOVA\estado\omniroute-errores.log") {
+            if (Test-Path $f) { Get-Content $f -Tail 12 | ForEach-Object { Write-Host "::notice::$(Split-Path $f -Leaf): $($_ -replace '[\r\n]', ' ')" } }
           }
-          Get-Content salida.txt | Select-String -Pattern '^\s+(OK|!)\s' | ForEach-Object { Write-Host "::notice::$($_.Line.Trim())" }
+          if (-not $termino) { Write-Host '::error::omniroute.ps1 no termino en 25 minutos'; Get-Process node, npm -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "::error::sigue vivo: $($_.Name) $($_.Id)" }; exit 1 }
+          if ((Get-Content salida.txt -Raw) -match 'Listo\. Panel de OmniRoute') { exit 0 }
+          Write-Host '::error::omniroute.ps1 fallo (ver avisos)'; exit 1
       - name: Revisar que quede seguro y conectado a NOVA
         shell: powershell
         run: |

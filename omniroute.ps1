@@ -36,7 +36,7 @@ $Agente = @{ 'User-Agent' = 'NOVA-instalador' }
 # Paquetes de OmniRoute que necesitan correr su paso de instalacion (lista de su README para la 3.8.52).
 $PermitirScripts = 'omniroute,keytar,onnxruntime-node,@parcel/watcher,@swc/core,protobufjs,esbuild'
 
-function Paso($texto) { Write-Host "`n== $texto" -ForegroundColor Cyan }
+function Paso($texto) { Write-Host "`n== $texto  ($(Get-Date -Format HH:mm:ss))" -ForegroundColor Cyan }
 function Bien($texto) { Write-Host "   OK  $texto" -ForegroundColor Green }
 function Aviso($texto) { Write-Host "   !   $texto" -ForegroundColor Yellow }
 
@@ -181,9 +181,11 @@ if ($instalada -ne $VersionOmni) {
         Where-Object { $_.Path -and $_.Path.StartsWith($NodeDir, [StringComparison]::OrdinalIgnoreCase) } |
         Stop-Process -Force -ErrorAction SilentlyContinue
     Write-Host '   ... instalando (pesa unos 500 MB, tarda unos minutos)'
-    $r = Start-Process -FilePath $Node -Wait -PassThru -NoNewWindow -WorkingDirectory $Datos -ArgumentList @(
+    # Sin -Wait: ese espera tambien a los procesos que deje npm vivos y se puede quedar colgado.
+    $r = Start-Process -FilePath $Node -PassThru -NoNewWindow -WorkingDirectory $Datos -ArgumentList @(
         "`"$Npm`"", 'install', '-g', '--prefix', "`"$Omni`"", '--no-fund', '--no-audit', '--loglevel', 'error',
         "--allow-scripts=$PermitirScripts", "omniroute@$VersionOmni")
+    $r.WaitForExit()
     if ($r.ExitCode -ne 0 -or -not (Test-Path $Cli)) { throw "npm no pudo instalar OmniRoute (salio con $($r.ExitCode))." }
 }
 Bien "OmniRoute $VersionOmni en $Omni"

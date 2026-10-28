@@ -1,6 +1,6 @@
 # NOVA: lo que llevamos
 
-Resumen al 27 de octubre de 2026. Versión actual: **1.4.0**.
+Resumen al 27 de octubre de 2026. Versión actual: **1.5.0**.
 
 ## 1. Qué es NOVA y qué decidimos
 
@@ -111,6 +111,12 @@ Me pediste una sola actualización con todo lo que habías pedido, y que fuera l
 - **Skills** (del hilo de skills). Carpetas con `SKILL.md` en formato Agent Skills. Trae 4; «baja las skills de anthropic» instala 15 más de anthropics/skills (docx, pdf, pptx y xlsx no se pueden, por su licencia). «¿Qué skills tienes?» las lista.
 - **Actualizar sin zip.** `actualizar.bat` baja solo lo que cambió desde tu repositorio privado.
 - **Pruebas en Windows de verdad.** Cada cambio corre 263 pruebas en Linux y en Windows con GitHub Actions.
+
+### 1.4.1 y 1.5: cerebro grande que no se acaba (28 de octubre)
+
+- **1.4.1.** Flechas ▲▼ junto a la plática, barra opaca, el cerebro grande manda menos (2,500 tokens de entrada y 700 de salida) y reintenta si Groq pide esperar. La pantalla la describe el modelo con vista de tu laptop y el cerebro grande razona con esa descripción.
+- **1.5: OmniRoute.** `actualizar.bat` instala OmniRoute en tu PC (o ábrelo con `omniroute.bat`). NOVA le pide todo con el modelo `auto` y OmniRoute cambia solo de proveedor gratis cuando uno se agota. Escucha solo en 127.0.0.1, con una clave que solo NOVA conoce. Si ya usabas Groq, le pasa tu clave. Guía: `oracle/OMNIROUTE.md`.
+- **Auditoría.** Cada llamada a un modelo queda en `estado\auditoria.jsonl` con el modelo real que contestó. Pregúntale «¿quién contestó?» para verlo en palabras; el panel http://127.0.0.1:20128 tiene el detalle por proveedor.
 
 ## 7. Dónde estamos
 
