@@ -149,3 +149,4 @@ jobs:
           }
           Write-Host "::notice::NOVA lo prendio en $(($escucha | ForEach-Object LocalAddress) -join ', ') tras $i s"
           python -m nova diagnostico 2>&1 | Select-String -Pattern 'OmniRoute|Cerebro|cerebro' | ForEach-Object { Write-Host "::notice::$($_.Line.Trim())" }
+          exit 0  # el diagnostico marca fallas por lo que no hay en esta maquina (modelo, voz)

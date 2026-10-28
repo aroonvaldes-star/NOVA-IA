@@ -145,7 +145,7 @@ function Omni-Api([string[]]$comando, $json) {
     # Llama a su API de administracion (en esta PC basta la credencial local de su linea de comandos).
     $cuerpo = Join-Path $Descargas 'omniroute-cuerpo.json'
     [IO.File]::WriteAllText($cuerpo, $json, (New-Object Text.UTF8Encoding $false))
-    try { return Omni (@('api') + $comando + @('--body', "@$cuerpo")) } finally { Remove-Item $cuerpo -Force -ErrorAction SilentlyContinue }
+    try { return Omni (@('--output', 'json', 'api') + $comando + @('--body', "@$cuerpo")) } finally { Remove-Item $cuerpo -Force -ErrorAction SilentlyContinue }
 }
 
 function Sin-Ruido($r) {
