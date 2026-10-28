@@ -545,6 +545,10 @@ if (MODO === 'barra') {
   mostrarEntrada(true);
   TAURI.event.listen('enfocar', () => { campo.value = ''; campo.focus(); });
   addEventListener('focus', () => campo.focus());
+  // Si das clic en otra parte, se esconde (con un respiro, por si el foco solo cambia de lugar dentro).
+  addEventListener('blur', () => setTimeout(() => {
+    if (!document.hasFocus() && !grabacion) TAURI.core.invoke('cerrar_barra').catch(() => {});
+  }, 400));
 }
 
 if (MODO === 'escritorio') {

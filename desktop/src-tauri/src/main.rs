@@ -22,8 +22,8 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use tauri::menu::{Menu, MenuItem};
-use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 const PUERTO: u16 = 8190;
@@ -72,6 +72,7 @@ fn mostrar_barra(app: &AppHandle, visible: bool) {
         return;
     };
     if visible {
+        anotar("Abro la barra para escribir.");
         let _ = b.show();
         let _ = b.unminimize();
         let _ = b.set_focus();
@@ -212,13 +213,10 @@ fn crear_ventana(app: &AppHandle) -> tauri::Result<()> {
             origen.y + tam.height - 76.0 - 90.0,
         ));
     }
-    // Si das clic en otra parte, la barra se esconde sola.
-    let b = barra.clone();
-    barra.on_window_event(move |evento| {
-        if let WindowEvent::Focused(false) = evento {
-            let _ = b.hide();
-        }
-    });
+    // Ojo: no se esconde con WindowEvent::Focused(false). En Windows ese evento llega en cuanto
+    // el foco pasa de la ventana a su WebView2, y la barra se cerraba al instante. La página
+    // misma la cierra al perder el foco de verdad (ver app.js).
+    let _ = barra;
 
     // Cursor: posición para el orbe y clics solo sobre las zonas interactivas.
     let w = ventana.clone();
@@ -293,6 +291,13 @@ fn main() {
                 bandeja = bandeja.icon(icono.clone());
             }
             bandeja
+                .show_menu_on_left_click(false)
+                // Clic izquierdo en el icono: la barra para escribirle. Clic derecho: el menú.
+                .on_tray_icon_event(|icono, evento| {
+                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = evento {
+                        alternar_barra(icono.app_handle());
+                    }
+                })
                 .on_menu_event(|app, evento| match evento.id.as_ref() {
                     "salir" => app.exit(0),
                     "escribir" => mostrar_barra(app, true),
