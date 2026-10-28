@@ -47,3 +47,80 @@ jobs:
           Get-Content salida.txt | Where-Object { $_ -match '^(FAILED|ERROR) |\.py:\d+: ' } | Select-Object -First 40 |
             ForEach-Object { Write-Host "::error::$($_ -replace '[\r\n]', ' ')" }
           exit $codigo
+
+  omniroute:
+    # Instala OmniRoute como lo haria actualizar.bat en una PC nueva que ya usaba Groq, y revisa que quede seguro.
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar OmniRoute con omniroute.ps1
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force "$env:APPDATA\NOVA" | Out-Null
+          '{"cerebro_endpoint":"https://api.groq.com/openai/v1","cerebro_clave":"gsk_prueba_falsa_0123456789abcdef","cerebro_auto":false,"internet":true}' |
+            Set-Content -Encoding ascii "$env:APPDATA\NOVA\config.json"
+          try { & .\omniroute.ps1 -SinPreguntas *>&1 | Tee-Object -FilePath salida.txt }
+          catch {
+            Write-Host "::error::$($_.Exception.Message -replace '[\r\n]+', ' | ')"
+            if (Test-Path salida.txt) { Get-Content salida.txt -Tail 25 | ForEach-Object { Write-Host "::error::$($_ -replace '[\r\n]', ' ')" } }
+            foreach ($f in "$env:LOCALAPPDATA\NOVA\estado\omniroute.log", "$env:LOCALAPPDATA\NOVA\estado\omniroute-errores.log") {
+              if (Test-Path $f) { Get-Content $f -Tail 15 | ForEach-Object { Write-Host "::error::$(Split-Path $f -Leaf): $($_ -replace '[\r\n]', ' ')" } }
+            }
+            exit 1
+          }
+          Get-Content salida.txt | Select-String -Pattern '^\s+(OK|!)\s' | ForEach-Object { Write-Host "::notice::$($_.Line.Trim())" }
+      - name: Revisar que quede seguro y conectado a NOVA
+        shell: powershell
+        run: |
+          $mal = 0
+          function Falla($t) { Write-Host "::error::$t"; $script:mal++ }
+          $c = Get-Content "$env:APPDATA\NOVA\config.json" -Raw | ConvertFrom-Json
+          if ($c.cerebro_endpoint -ne 'http://127.0.0.1:20128/v1') { Falla "cerebro_endpoint quedo en $($c.cerebro_endpoint)" }
+          if ($c.cerebro_api_modelo -ne 'auto') { Falla "cerebro_api_modelo quedo en $($c.cerebro_api_modelo)" }
+          if (-not (Test-Path "$env:APPDATA\NOVA\config.json.antes-omniroute")) { Falla 'No guardo la config anterior' }
+          Write-Host "::notice::NOVA tiene clave de OmniRoute: $([bool]$c.cerebro_clave)"
+          $escucha = Get-NetTCPConnection -LocalPort 20128 -State Listen -ErrorAction SilentlyContinue
+          Write-Host "::notice::Escucha en: $(($escucha | ForEach-Object LocalAddress) -join ', ')"
+          if (-not $escucha) { Falla 'OmniRoute no quedo escuchando' }
+          if ($escucha | Where-Object { $_.LocalAddress -notin '127.0.0.1', '::1' }) { Falla 'OmniRoute escucha fuera de esta PC' }
+          function Pedir($ruta, $clave, $cuerpo) {
+            $h = @{}; if ($clave) { $h['Authorization'] = "Bearer $clave" }
+            try {
+              if ($cuerpo) { $r = Invoke-WebRequest "http://127.0.0.1:20128$ruta" -Method Post -Headers $h -Body $cuerpo -ContentType 'application/json' -UseBasicParsing -TimeoutSec 60 }
+              else { $r = Invoke-WebRequest "http://127.0.0.1:20128$ruta" -Headers $h -UseBasicParsing -TimeoutSec 60 }
+              return @{ Codigo = [int]$r.StatusCode; Texto = $r.Content }
+            } catch {
+              $resp = $_.Exception.Response
+              $texto = ''
+              if ($resp) { try { $texto = (New-Object IO.StreamReader($resp.GetResponseStream())).ReadToEnd() } catch {} ; return @{ Codigo = [int]$resp.StatusCode; Texto = $texto } }
+              return @{ Codigo = 0; Texto = $_.Exception.Message }
+            }
+          }
+          $sin = Pedir '/v1/models' $null $null
+          $con = Pedir '/v1/models' $c.cerebro_clave $null
+          Write-Host "::notice::/v1/models sin clave: $($sin.Codigo); con la clave de NOVA: $($con.Codigo)"
+          if ($c.cerebro_clave -and $sin.Codigo -eq 200) { Falla 'OmniRoute contesta sin clave aunque NOVA tiene una' }
+          if ($con.Codigo -ne 200) { Falla "Con la clave de NOVA /v1/models dio $($con.Codigo): $($con.Texto.Substring(0, [Math]::Min(200, $con.Texto.Length)))" }
+          $chat = Pedir '/v1/chat/completions' $c.cerebro_clave '{"model":"auto","messages":[{"role":"user","content":"hola"}],"max_tokens":5}'
+          $t = ($chat.Texto -replace '[\r\n]', ' ')
+          Write-Host "::notice::chat auto con clave de Groq falsa: $($chat.Codigo) $($t.Substring(0, [Math]::Min(300, $t.Length)))"
+          if ($mal) { exit 1 }
+      - name: NOVA lo vuelve a prender sola
+        shell: pwsh
+        run: |
+          Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep -Seconds 3
+          python -m pip install --disable-pip-version-check -q -e .
+          python -c "from nova import omniroute; from nova.config import cargar; c = cargar(); print(omniroute.arrancar(c))"
+          for ($i = 0; $i -lt 120; $i++) { if (Get-NetTCPConnection -LocalPort 20128 -State Listen -ErrorAction SilentlyContinue) { break }; Start-Sleep 1 }
+          $escucha = Get-NetTCPConnection -LocalPort 20128 -State Listen -ErrorAction SilentlyContinue
+          if (-not $escucha) {
+            Get-Content "$env:LOCALAPPDATA\NOVA\estado\omniroute.log" -Tail 20 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "::error::$_" }
+            Write-Host '::error::NOVA no pudo prender OmniRoute'; exit 1
+          }
+          Write-Host "::notice::NOVA lo prendio en $(($escucha | ForEach-Object LocalAddress) -join ', ') tras $i s"
+          python -m nova diagnostico 2>&1 | Select-String -Pattern 'OmniRoute|Cerebro|cerebro' | ForEach-Object { Write-Host "::notice::$($_.Line.Trim())" }
