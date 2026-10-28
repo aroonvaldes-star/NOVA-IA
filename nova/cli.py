@@ -250,6 +250,35 @@ def cmd_diagnostico(a) -> int:
     return 0 if diagnosticar(rapido=a.rapido).fallas == 0 else 1
 
 
+def cmd_skills(a) -> int:
+    from .skills import Skills
+
+    config = cargar()
+    skills = Skills.desde_config(config)
+    skills.preparar()
+    if a.nombre == "bajar":
+        from .skills import bajar_anthropic, descargadas
+
+        print("Bajando las skills de github.com/anthropics/skills…")
+        try:
+            r = bajar_anthropic(descargadas(config))
+        except (OSError, ValueError) as exc:
+            print(f"No pude bajarlas: {exc}", file=sys.stderr)
+            return 1
+        print(f"Instalé {len(r['instaladas'])} en {r['carpeta']}: {', '.join(r['instaladas'])}")
+        for nombre, motivo in r["omitidas"].items():
+            print(f"  No instalé {nombre}: {motivo}")
+        return 0
+    if a.nombre:
+        print(skills.leer(a.nombre, max_chars=100_000))
+        return 0
+    print(skills.resumen())
+    print("\nCarpetas donde busco:")
+    for c in skills.carpetas:
+        print(f"  {'[x]' if c.is_dir() else '[ ]'} {c}")
+    return 0
+
+
 def cmd_nota(a) -> int:
     nova = _nova()
     print(nova.herramientas.usar("nota", {"texto": " ".join(a.texto)}).texto)
@@ -319,6 +348,9 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("diagnostico", help="revisa el equipo y deja un reporte")
     s.add_argument("--rapido", action="store_true", help="sin probar el modelo ni la voz")
     s.set_defaults(f=cmd_diagnostico)
+    s = sub.add_parser("skills", help="las skills que tiene NOVA (carpetas con SKILL.md)")
+    s.add_argument("nombre", nargs="?", default="", help="muestra una skill completa, o «bajar» para traer las de anthropics/skills")
+    s.set_defaults(f=cmd_skills)
     s = sub.add_parser("nota")
     s.add_argument("texto", nargs="+")
     s.set_defaults(f=cmd_nota)

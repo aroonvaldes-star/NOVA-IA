@@ -25,6 +25,7 @@ import uuid
 from typing import Any, Callable
 
 from . import __version__, aprendizaje, pantalla, platica, personalidad, politica
+from .skills import Skills
 from .config import Config
 from .celular import Emparejador
 from .confirmaciones import Confirmaciones
@@ -113,6 +114,10 @@ class Nova:
         self.platica = platica.EstadoPlatica()
         self.observador = pantalla.Observador()
         self.herramientas.vision = bool(getattr(self.motor, "vision", False))
+        self.skills = Skills.desde_config(config) if config.skills else None
+        if self.skills:
+            self.skills.preparar()
+        self.herramientas.skills = self.skills
         self.indexando = False
         # Retoma la conversación si fue hace poco (la cerraste y la volviste a abrir); lo de días
         # atrás se queda en la memoria, no en la plática, para que no se quede pegada en eso.
@@ -310,6 +315,7 @@ class Nova:
                 self.bus.publicar({"tipo": "aprendi", "recuerdos": nuevos})
         en_linea = self.internet.hay_conexion()
         local = bool(LOCAL.search(texto)) and not PIDE_WEB.search(texto) and not URL.search(texto)
+        catalogo, activa = self._skills_para(texto)
         self.observador.anotar(pantalla.ventana_activa())
         sistema = personalidad.prompt_sistema(
             self.personalidad,
@@ -320,6 +326,7 @@ class Nova:
                                            "lo usa empezando con «piénsalo bien:». Puedo sugerírselo." if self.cerebro and motor is not self.cerebro else "")),
             self.memoria.perfil(self.config.perfil_max_chars) if self.config.memoria_personal else "",
             self._contexto_relevante(texto, local),
+            skills=catalogo, skill_activa=activa,
         )
         if local:
             sistema += ("\n\nEsta pregunta es sobre sus archivos o carpetas: contesta con buscar_archivos, analizar_carpeta, "
@@ -366,6 +373,17 @@ class Nova:
                 continue
             return final or "…"
         return "Me enredé en demasiados pasos. ¿Me lo dices de otra forma o lo partimos en partes?"
+
+    def _skills_para(self, texto: str) -> tuple[str, str]:
+        """El catálogo de skills (siempre igual) y, si el mensaje pide una, sus instrucciones."""
+        if not self.skills:
+            return "", ""
+        catalogo = self.skills.catalogo(int(self.config.skills_catalogo_chars))
+        skill = self.skills.elegir(texto)
+        if not skill:
+            return catalogo, ""
+        self.bus.publicar({"tipo": "herramienta", "nombre": "usar_skill", "args": {"nombre": skill.nombre}})
+        return catalogo, f"{skill.nombre}: {skill.descripcion}\n\n" + self.skills.instrucciones(skill, int(self.config.skills_max_chars))
 
     def _investigar_antes(self, texto: str, ctx: str) -> list[dict] | None:
         """Si escribiste un enlace, lo lee; si la pregunta depende de datos recientes, busca primero."""
@@ -507,11 +525,39 @@ class Nova:
                     if args["activo"] else "Salí del modo privado; vuelvo a recordar.")
         if a == "estado":
             return self.presentarme()
+        if a == "bajar_skills":
+            return self.bajar_skills()
+        if a == "skills":
+            return self.skills.resumen() if self.skills else "Tengo las skills desactivadas (\"skills\": false en config.json)."
         if a == "confirmar":
             return self.confirmar(args["codigo"], por_voz=por_voz)["salida"]
         if a == "celular":
             return self.conectar_celular() if args["activo"] else f"Desconecté {self.memoria.quitar_dispositivos()} dispositivo(s)."
         return None
+
+    def bajar_skills(self) -> str:
+        """Baja las skills de anthropics/skills en segundo plano y avisa al terminar (lo pide el usuario, no el modelo)."""
+        if not self.skills:
+            return "Tengo las skills desactivadas (\"skills\": false en config.json)."
+        if not self.internet.activo:
+            return "Estoy sin internet; dime «conéctate» y luego vuelve a pedírmelo."
+
+        def bajar():
+            from .skills import bajar_anthropic, descargadas
+
+            try:
+                r = bajar_anthropic(descargadas(self.config))
+            except (OSError, ValueError) as exc:
+                self.bus.publicar({"tipo": "aviso", "texto": f"No pude bajar las skills: {exc}"})
+                return
+            texto = f"Listo, instalé {len(r['instaladas'])} skills de Anthropic: {', '.join(r['instaladas'])}."
+            if r["omitidas"]:
+                texto += (f" No instalé {', '.join(r['omitidas'])}: su licencia solo permite usarlas dentro de los "
+                          "servicios de Anthropic, no con otro modelo.")
+            self.bus.publicar({"tipo": "aviso", "texto": texto})
+
+        threading.Thread(target=bajar, daemon=True).start()
+        return "Voy por las skills de github.com/anthropics/skills; te aviso cuando queden."
 
     def confirmar(self, codigo: str, por_voz: bool = False) -> dict:
         self._estado("procesando")

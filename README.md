@@ -19,6 +19,7 @@ NOVA es una asistente de inteligencia artificial que vive en tu computadora. Es 
 | **Conoce tus archivos** | Lee Documentos y Escritorio, más las carpetas que le pidas («conoce la carpeta N:\\…»): texto, código y Word. Usa lo relevante como contexto y encuentra archivos por nombre. |
 | **Aprende de internet** | Si responde «no sé» y hay conexión, busca y vuelve a responder citando fuentes. Lo que aprende queda guardado para usarlo sin conexión. |
 | **Herramientas** | Buscar y leer en la web, buscar en su memoria y en tus documentos indexados, leer y listar archivos de todas tus unidades, proponer escribir archivos, órdenes (git, dotnet…), calculadora, notas, tareas y discos. |
+| **Skills** | Carpetas con un `SKILL.md` (formato Agent Skills) que le enseñan a hacer algo a tu manera. Trae cuatro: `crear-skill`, `revisar-codigo`, `mensaje-commit` y `explicar-error`. Pon las tuyas en `skills\` o en `%APPDATA%\NOVA\skills`; también lee `~/.claude/skills`. «Baja las skills de anthropic» trae las de github.com/anthropics/skills (menos docx, pdf, pptx y xlsx, por su licencia). «¿Qué skills tienes?», «usa la skill …». Ver [skills/LEEME.md](skills/LEEME.md). |
 | **Seguridad** | Nunca corre como administrador. Nada de formatear, particionar, arranque, BitLocker, registro ni borrado masivo. Lo que cambia algo se confirma con un código de 4 cifras que solo aparece en pantalla. Páginas, archivos y pantalla son datos, nunca órdenes. |
 | **Voz** | Pulsar para hablar (Ctrl+Alt+Espacio): whisper.cpp para oír y Piper con voz es_MX para hablar, todo local. El orbe late con su voz. |
 | **Plática de a ratos** | Hasta 3 veces al día te habla por iniciativa (retoma tus proyectos, pregunta cómo te fue, sugiere un descanso). Nunca con pantalla completa, en llamada, con «No molestar» ni de 23:00 a 08:00. |
@@ -35,6 +36,7 @@ nova/                 núcleo en Python (sin dependencias obligatorias)
   aprendizaje.py      cómo aprende de ti
   personalidad.py     identidad, estado propio, colores por contexto
   herramientas.py     lo que puede usar mientras piensa
+  skills.py           skills (carpetas con SKILL.md): catálogo, elegir y leer
   politica.py         política de órdenes y rutas (falla cerrada)
   internet.py         buscar y leer, sin redes internas
   voz.py              whisper.cpp, Piper y órdenes rápidas
@@ -42,6 +44,7 @@ nova/                 núcleo en Python (sin dependencias obligatorias)
   celular.py          emparejamiento y HTTPS propio para el celular
   servidor.py         API local para el orbe (y para el celular)
   cli.py              la orden `nova`
+skills/               skills incluidas (y las tuyas, si quieres)
 ui/                   el orbe (Three.js, sin internet) y la interfaz
 desktop/src-tauri/    envoltorio de escritorio: ventana transparente, bandeja, atajos
 tests/                pruebas automáticas
@@ -71,7 +74,7 @@ La guía de la primera prueba, paso a paso, está en [PRUEBA-WINDOWS.md](PRUEBA-
   cargo tauri build      (instalador .exe por usuario)
   ```
   El envoltorio arranca el núcleo solo y lo cierra al salir. **Ctrl+Alt+A** abre la barra para escribir, **Esc** la esconde, mantén **Ctrl+Alt+Espacio** para hablar.
-- **Terminal:** `nova chat`, `nova preguntar "…"`, `nova yo`, `nova tareas`, `nova memoria indexar D:\Proyectos`, `nova web buscar "…"`, `nova orden "git status"`.
+- **Terminal:** `nova chat`, `nova preguntar "…"`, `nova yo`, `nova tareas`, `nova memoria indexar D:\Proyectos`, `nova web buscar "…"`, `nova orden "git status"`, `nova skills`.
 
 ### Celular
 
