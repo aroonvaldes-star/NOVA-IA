@@ -16,7 +16,7 @@ Si GitHub te pide entrar, hazlo con tu cuenta en la ventana que abre. El instala
 
 **NOVA libre en el escritorio.** Con la carpeta conectada a GitHub, el instalador y `actualizar.bat` bajan el orbe de escritorio ya compilado. Quedan dos accesos:
 
-- **NOVA** (Ctrl+Alt+N): el orbe flota libre sobre tus ventanas, sin marco, y deja pasar los clics. **Ctrl+Alt+A** muestra u oculta la barra para escribirle y **Ctrl+Alt+Espacio** (mantenido) es para hablarle. Para cerrarla, usa el icono de NOVA junto al reloj → Salir.
+- **NOVA** (Ctrl+Alt+N): el orbe flota libre sobre tus ventanas, sin marco, y deja pasar los clics. Clic en el orbe, **Ctrl+Alt+A** (o Alt Gr+A) o clic en su icono junto al reloj abre la barra para escribirle y **Ctrl+Alt+Espacio** (mantenido) es para hablarle. **Alt Gr+Q** (o Ctrl+Shift+Q) la esconde en el icono junto al reloj y la vuelve a sacar; mientras NOVA está abierta, Alt Gr+Q no escribe @. Para cerrarla: clic derecho en ese icono → Salir.
 - **NOVA en ventana**: la ventana de siempre.
 
 ## Actualizar a la 0.2 con el zip (si no usas GitHub)

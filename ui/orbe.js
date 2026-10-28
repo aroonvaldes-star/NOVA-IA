@@ -293,6 +293,9 @@ export class Orbe {
 
   estado(nombre, contexto) {
     if (!ESTADOS[nombre]) nombre = 'reposo';
+    // Libre en el escritorio: mientras piensa o habla se queda donde está (antes se iba al centro).
+    if (nombre !== 'reposo' && this.nombreEstado === 'reposo') this.quieto = { x: this.pos.x, y: this.pos.y };
+    if (nombre === 'reposo') this.quieto = null;
     this.nombreEstado = nombre;
     if (contexto && COLORES[contexto]) this.colorBase.set(COLORES[contexto]);
     if (nombre === 'reposo') this.colorBase.set(COLORES.general);
@@ -338,7 +341,7 @@ export class Orbe {
     let obj;
     if (this.anclado || anclaPorEstado || !this.libre) {
       obj = this.ancla || (this.zona ? { x: this.zona.x + this.zona.w / 2, y: this.zona.y + this.zona.h / 2 }
-        : { x: innerWidth / 2, y: innerHeight * 0.4 });
+        : this.libre && this.quieto ? this.quieto : { x: innerWidth / 2, y: innerHeight * 0.4 });
     } else {
       obj = this._objetivoLibre(SIN_MOVIMIENTO ? t * 0.1 : t);
     }

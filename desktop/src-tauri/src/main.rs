@@ -8,7 +8,8 @@
 //   * manda la posición del cursor al orbe para que se aparte
 //   * abre una barra aparte (ventana normal, que sí recibe el teclado) para escribirle:
 //     con clic en el orbe, con Ctrl+Alt+A o desde la bandeja
-//   * registra los atajos globales: Ctrl+Alt+A (escribir) y Ctrl+Alt+Espacio (hablar)
+//   * registra los atajos globales: Ctrl+Alt+A (escribir), Ctrl+Alt+Espacio (hablar) y
+//     Alt Gr+Q o Ctrl+Shift+Q (esconder el orbe en la bandeja o volver a sacarlo)
 //   * pone el icono en la bandeja del sistema
 //   * deja lo que falle en %LOCALAPPDATA%\NOVA\estado\escritorio.log
 
@@ -79,6 +80,18 @@ fn mostrar_barra(app: &AppHandle, visible: bool) {
         let _ = b.emit("enfocar", ());
     } else {
         let _ = b.hide();
+    }
+}
+
+/// Esconde el orbe (queda solo el icono junto al reloj) o lo vuelve a mostrar.
+fn alternar_orbe(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("orbe") {
+        if w.is_visible().unwrap_or(false) {
+            let _ = w.hide();
+            mostrar_barra(app, false);
+        } else {
+            let _ = w.show();
+        }
     }
 }
 
@@ -249,6 +262,10 @@ fn crear_ventana(app: &AppHandle) -> tauri::Result<()> {
 fn main() {
     let abrir = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyA);
     let hablar = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::Space);
+    // Alt Gr + Q (= Ctrl+Alt+Q) lo pidió Aroon sabiendo que en el teclado latinoamericano es la @:
+    // mientras NOVA esté abierta no se puede escribir @. Ctrl+Shift+Q queda de respaldo.
+    let esconder = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyQ);
+    let esconder2 = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyQ);
 
     let app = tauri::Builder::default()
         .manage(Zonas(Mutex::new(Vec::new())))
@@ -258,6 +275,8 @@ fn main() {
                 .with_handler(move |app, atajo, evento| {
                     if atajo == &abrir && evento.state() == ShortcutState::Pressed {
                         alternar_barra(app);
+                    } else if (atajo == &esconder || atajo == &esconder2) && evento.state() == ShortcutState::Pressed {
+                        alternar_orbe(app);
                     } else if atajo == &hablar {
                         let activo = evento.state() == ShortcutState::Pressed;
                         let _ = app.emit("hablar", serde_json::json!({ "activo": activo }));
@@ -281,9 +300,15 @@ fn main() {
             if let Err(e) = app.global_shortcut().register(hablar) {
                 anotar(&format!("No pude registrar Ctrl+Alt+Espacio (¿otra app lo usa?): {e}"));
             }
+            if let Err(e) = app.global_shortcut().register(esconder) {
+                anotar(&format!("No pude registrar Alt Gr+Q (¿otra app lo usa?): {e}"));
+            }
+            if let Err(e) = app.global_shortcut().register(esconder2) {
+                anotar(&format!("No pude registrar Ctrl+Shift+Q (¿otra app lo usa?): {e}"));
+            }
 
             let escribir = MenuItem::with_id(app, "escribir", "Escribirle (Ctrl+Alt+A)", true, None::<&str>)?;
-            let mostrar = MenuItem::with_id(app, "mostrar", "Mostrar u ocultar a NOVA", true, None::<&str>)?;
+            let mostrar = MenuItem::with_id(app, "mostrar", "Esconder o sacar el orbe (Alt Gr+Q)", true, None::<&str>)?;
             let salir = MenuItem::with_id(app, "salir", "Salir", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&escribir, &mostrar, &salir])?;
             let mut bandeja = TrayIconBuilder::with_id("nova").tooltip("NOVA").menu(&menu);
@@ -301,15 +326,7 @@ fn main() {
                 .on_menu_event(|app, evento| match evento.id.as_ref() {
                     "salir" => app.exit(0),
                     "escribir" => mostrar_barra(app, true),
-                    "mostrar" => {
-                        if let Some(w) = app.get_webview_window("orbe") {
-                            if w.is_visible().unwrap_or(false) {
-                                let _ = w.hide();
-                            } else {
-                                let _ = w.show();
-                            }
-                        }
-                    }
+                    "mostrar" => alternar_orbe(app),
                     _ => {}
                 })
                 .build(app)?;
