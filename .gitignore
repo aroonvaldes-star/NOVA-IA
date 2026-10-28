@@ -13,3 +13,7 @@ desktop/src-tauri/gen/
 llama/
 whisper/
 piper/
+# Tu configuración (puede llevar claves): nunca va en git
+/config.json
+/config.json.txt
+/config.txt

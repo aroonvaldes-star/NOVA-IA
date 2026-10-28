@@ -90,9 +90,12 @@ DEFECTO: dict[str, Any] = {
 class Config(dict):
     """Diccionario de configuración con acceso por atributo y rutas."""
 
-    def __init__(self, valores: dict[str, Any], carpetas: Rutas):
+    def __init__(self, valores: dict[str, Any], carpetas: Rutas, archivos: list[Path] | None = None,
+                 avisos: list[str] | None = None):
         super().__init__(valores)
         self.rutas = carpetas
+        self.archivos = archivos or []  # los config.json que se leyeron
+        self.avisos = avisos or []  # errores al leerlos, para el diagnóstico
 
     def __getattr__(self, nombre: str) -> Any:
         try:
@@ -101,13 +104,38 @@ class Config(dict):
             raise AttributeError(nombre) from exc
 
 
-def _leer_json(ruta: Path) -> dict[str, Any]:
+def _leer_json(ruta: Path, avisos: list[str] | None = None) -> dict[str, Any]:
     try:
         with open(ruta, encoding="utf-8-sig") as f:  # tolera el BOM que deja el Bloc de notas
             datos = json.load(f)
-        return datos if isinstance(datos, dict) else {}
-    except (OSError, ValueError):
+    except OSError:
         return {}
+    except json.JSONDecodeError as exc:
+        if avisos is not None:
+            pista = " (en JSON las rutas de Windows van con \\\\ doble)" if "escape" in exc.msg else ""
+            avisos.append(f"{ruta} tiene un error en la línea {exc.lineno}, columna {exc.colno}: {exc.msg}{pista}. No lo usé.")
+        return {}
+    except ValueError:
+        return {}
+    if not isinstance(datos, dict):
+        if avisos is not None:
+            avisos.append(f"{ruta} no tiene la forma {{\"clave\": valor}}. No lo usé.")
+        return {}
+    return datos
+
+
+# El Bloc de notas guarda «config.json» como «config.json.txt» si no eliges «Todos los archivos».
+NOMBRES_CONFIG = ("config.json", "config.json.txt", "config.txt")
+
+
+def archivos_config(carpetas: Rutas) -> list[Path]:
+    encontrados = []
+    for carpeta in (carpetas.programa, carpetas.config):
+        for nombre in NOMBRES_CONFIG:
+            if (carpeta / nombre).is_file():
+                encontrados.append(carpeta / nombre)
+                break
+    return encontrados
 
 
 def _convertir(texto: str, ejemplo: Any) -> Any:
@@ -125,8 +153,13 @@ def _convertir(texto: str, ejemplo: Any) -> Any:
 def cargar(carpetas: Rutas | None = None) -> Config:
     carpetas = carpetas or rutas()
     valores = dict(DEFECTO)
-    for archivo in (carpetas.programa / "config.json", carpetas.config / "config.json"):
-        for clave, valor in _leer_json(archivo).items():
+    archivos, avisos = archivos_config(carpetas), []
+    for archivo in archivos:
+        datos = _leer_json(archivo, avisos)
+        desconocidas = [c for c in datos if c not in DEFECTO]
+        if desconocidas:
+            avisos.append(f"{archivo}: no conozco {', '.join(desconocidas)} (¿está bien escrito?).")
+        for clave, valor in datos.items():
             if clave in DEFECTO:
                 valores[clave] = valor
     for clave, ejemplo in DEFECTO.items():
@@ -136,4 +169,4 @@ def cargar(carpetas: Rutas | None = None) -> Config:
                 valores[clave] = _convertir(env, ejemplo)
             except ValueError:
                 pass
-    return Config(valores, carpetas)
+    return Config(valores, carpetas, archivos, avisos)

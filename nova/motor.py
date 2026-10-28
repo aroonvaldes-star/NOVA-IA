@@ -369,7 +369,10 @@ class MotorRemoto(MotorLlama):
         return self.config.cerebro_api_modelo or "nova-cerebro"
 
     def _extras_peticion(self) -> dict:
-        return {}  # los servicios en la nube rechazan campos que no conocen
+        # Los servicios en la nube rechazan campos que no conocen; solo lo que sabemos que aceptan.
+        if "groq.com" in self.endpoint and "gpt-oss" in self._nombre_api():
+            return {"reasoning_effort": "low"}  # piensa poco antes de contestar: responde en un par de segundos
+        return {}
 
     def precalentar(self, sistema: str = "") -> None:
         pass  # en la nube ya está cargado; no gastes peticiones

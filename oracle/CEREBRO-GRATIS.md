@@ -31,6 +31,8 @@ Abre `%APPDATA%\NOVA\config.json` (si no existe, créalo) y deja algo así:
 
 Con `cerebro_auto` en `true` usa el cerebro grande siempre que haya red. Si prefieres usarlo solo cuando lo pidas, ponlo en `false` y empieza tu mensaje con «piénsalo bien:».
 
+Si lo haces en el Bloc de notas, en «Guardar como» elige **Tipo: Todos los archivos**. Si se guarda como `config.json.txt`, NOVA también lo lee.
+
 Reinicia NOVA. Si algo falla, NOVA te avisa y contesta con su modelo local; mándame el aviso.
 
 ## Segunda opción: OpenRouter

@@ -123,3 +123,29 @@ def test_anota_cuanto_tardo_cada_respuesta(crear_nova, config):
     nova.procesar("hola")
     linea = (config.rutas.estado / "tiempos.log").read_text(encoding="utf-8").strip().splitlines()[-1]
     assert "total" in linea and "local: 1.2s" in linea and "leyó 900 tokens" in linea and "a 35/s" in linea
+
+
+def test_lee_config_json_txt_y_avisa_errores(tmp_path, monkeypatch):
+    monkeypatch.setenv("NOVA_HOME", str(tmp_path / "nova"))
+    from nova.config import cargar, rutas
+
+    r = rutas()
+    r.crear()
+    (r.config / "config.json.txt").write_text('{"cerebro_auto": true, "cerebro_modelo": "Groq", "cerebro_modleo": 1}', encoding="utf-8")
+    c = cargar(r)
+    assert c.cerebro_auto is True and c.cerebro_modelo == "Groq"
+    assert c.archivos == [r.config / "config.json.txt"]
+    assert any("cerebro_modleo" in a for a in c.avisos)
+
+    (r.config / "config.json").write_text('{"carpetas": ["N:\\NOVORA"]}', encoding="utf-8")
+    c = cargar(r)
+    assert c.archivos == [r.config / "config.json"]  # config.json gana
+    assert c.carpetas == ["~/Documents", "~/Desktop"] and "doble" in c.avisos[0]
+
+
+def test_groq_piensa_poco(config):
+    config["cerebro_endpoint"] = "https://api.groq.com/openai/v1"
+    config["cerebro_api_modelo"] = "openai/gpt-oss-120b"
+    assert MotorRemoto(config)._extras_peticion() == {"reasoning_effort": "low"}
+    config["cerebro_endpoint"] = "https://openrouter.ai/api/v1"
+    assert MotorRemoto(config)._extras_peticion() == {}

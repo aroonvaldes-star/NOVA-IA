@@ -15,6 +15,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+import urllib.error
 
 from . import __version__
 from .config import Config, cargar
@@ -157,6 +158,34 @@ def diagnosticar(config: Config | None = None, rapido: bool = False) -> Reporte:
         r.titulo("Últimas respuestas (cuánto tardaron)")
         for linea in tiempos.read_text(encoding="utf-8", errors="replace").splitlines()[-8:]:
             r(BIEN, linea)
+
+    r.titulo("Configuración")
+    if config.archivos:
+        for archivo in config.archivos:
+            r(BIEN, f"Leí {archivo}")
+    else:
+        r(BIEN, f"Sin config.json (uso lo de fábrica). Si quieres cambiar algo: {config.rutas.config / 'config.json'}")
+    for aviso in config.avisos:
+        r(MAL, aviso)
+
+    r.titulo("Cerebro grande")
+    if not config.cerebro_endpoint:
+        r(AVISO, "No está configurado", "Para que entienda mejor, conecta uno gratis: oracle/CEREBRO-GRATIS.md")
+    elif not rapido:
+        from .motor import MotorRemoto
+
+        cerebro = MotorRemoto(config)
+        try:
+            t0 = time.monotonic()
+            texto = cerebro.chat([{"role": "user", "content": "Responde solo: listo"}], max_tokens=300, temperatura=0)
+            r(BIEN, f"{cerebro.modelo} respondió en {time.monotonic() - t0:.1f} s: {texto.strip()[:60]}"
+              + (" (lo uso para todo cuando hay internet)" if config.cerebro_auto else " (solo con «piénsalo bien:»)"))
+        except urllib.error.HTTPError as exc:
+            pista = {401: "La clave no es válida: revisa cerebro_clave.", 404: "No existe ese modelo o esa dirección: revisa cerebro_api_modelo y cerebro_endpoint.",
+                     429: "Se acabó el límite gratis por ahora; vuelve a intentar más tarde."}.get(exc.code, "")
+            r(MAL, f"El cerebro grande respondió con error {exc.code}", pista)
+        except Exception as exc:  # noqa: BLE001
+            r(MAL, f"No pude usar el cerebro grande: {exc}", "Revisa cerebro_endpoint y tu internet.")
 
     r.titulo("Internet")
     from .internet import Internet
