@@ -38,6 +38,12 @@ jobs:
           if (-not $exe) { Write-Host 'Sin la rama escritorio en este checkout (normal en pruebas)'; }
           else { if ((Get-Item $exe).Length -lt 1000000) { throw 'El .exe bajado esta incompleto' } }
       - name: Pruebas de Python
+        shell: pwsh
         run: |
           python -m pip install --disable-pip-version-check -q -e ".[completo]" pytest
-          python -m pytest -q
+          python -m pytest -q -rfE --tb=line 2>&1 | Tee-Object -FilePath salida.txt
+          $codigo = $LASTEXITCODE
+          # Cada falla como anotación: así se ve en el resumen sin bajar el registro completo.
+          Get-Content salida.txt | Where-Object { $_ -match '^(FAILED|ERROR) |\.py:\d+: ' } | Select-Object -First 40 |
+            ForEach-Object { Write-Host "::error::$($_ -replace '[\r\n]', ' ')" }
+          exit $codigo
