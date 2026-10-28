@@ -149,3 +149,20 @@ def test_groq_piensa_poco(config):
     assert MotorRemoto(config)._extras_peticion() == {"reasoning_effort": "low"}
     config["cerebro_endpoint"] = "https://openrouter.ai/api/v1"
     assert MotorRemoto(config)._extras_peticion() == {}
+
+
+def test_recorta_para_que_quepa():
+    from nova.motor import _texto, _tokens, recortar
+
+    sistema = {"role": "system", "content": "S" * 3000}
+    viejos = [{"role": "user" if i % 2 == 0 else "assistant", "content": f"plática {i} " + "x" * 3000} for i in range(10)]
+    actual = {"role": "user", "content": "¿qué dice la página?"}
+    accion = {"role": "assistant", "content": 'ACCION: {"herramienta": "leer_web"}'}
+    pagina = {"role": "user", "content": "RESULTADO de leer_web:\n" + "p" * 40000}
+    mensajes = [sistema, *viejos, actual, accion, pagina]
+    r = recortar(mensajes, 4000)
+    assert sum(_tokens(_texto(m)) for m in r) <= 4000
+    assert r[0] == sistema and actual in r and r[-1]["content"].startswith("RESULTADO de leer_web")
+    assert "recortado" in r[-1]["content"]
+    assert len(pagina["content"]) == 40023  # no toca los originales
+    assert recortar([sistema, actual], 4000) == [sistema, actual]

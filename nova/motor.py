@@ -186,6 +186,7 @@ class MotorLlama(Motor):
     def _argumentos(self) -> tuple[list[str], list[str]]:
         puerto = self.endpoint.rsplit(":", 1)[-1]
         contexto, capas = self._acomodar()
+        self.contexto = contexto
         base = [
             str(self.binario), "-m", str(self.ruta_modelo), "--host", "127.0.0.1", "--port", puerto,
             "-c", str(contexto), "-ngl", str(capas), "--alias", "nova",
@@ -272,8 +273,13 @@ class MotorLlama(Motor):
             except subprocess.TimeoutExpired:
                 p.kill()
 
+    def _presupuesto(self) -> int:
+        """Cuántos tokens de entrada caben en una petición."""
+        return int(getattr(self, "contexto", 0) or self.config.context)
+
     def chat(self, mensajes, al_token=None, temperatura=0.6, max_tokens=1024) -> str:
         self.asegurar()
+        mensajes = recortar(mensajes, self._presupuesto() - max_tokens - 256)
         cuerpo = json.dumps({
             "model": self._nombre_api(), "messages": mensajes, "stream": True,
             "temperature": temperatura, "max_tokens": max_tokens, **self._extras_peticion(),
@@ -375,6 +381,10 @@ class MotorRemoto(MotorLlama):
     def _nombre_api(self) -> str:
         return self.config.cerebro_api_modelo or "nova-cerebro"
 
+    def _presupuesto(self) -> int:
+        # Groq gratis: 8,000 tokens por minuto; una petición más grande la rechaza entera.
+        return int(self.config.cerebro_max_entrada)
+
     def _extras_peticion(self) -> dict:
         # Los servicios en la nube rechazan campos que no conocen; solo lo que sabemos que aceptan.
         if "groq.com" in self.endpoint and "gpt-oss" in self._nombre_api():
@@ -403,6 +413,48 @@ class MotorRemoto(MotorLlama):
 
     def detener(self) -> None:
         pass
+
+
+def _tokens(texto: str) -> int:
+    return len(texto) // 3 + 1  # en español, unos 3 a 4 caracteres por token; mejor quedarse corto
+
+
+def _texto(m: dict) -> str:
+    c = m.get("content")
+    return c if isinstance(c, str) else " ".join(p.get("text", "") for p in c or [] if isinstance(p, dict))
+
+
+def recortar(mensajes: list[dict], limite: int) -> list[dict]:
+    """Deja la petición dentro de `limite` tokens: si se pasa, el servicio responde 400 y no contesta nada.
+
+    Conserva siempre el sistema, tu mensaje actual y lo que vino después (herramientas). Primero
+    quita plática vieja; si aún no cabe, acorta los textos más largos (páginas, archivos).
+    """
+    limite = max(limite, 1024)
+    if sum(_tokens(_texto(m)) for m in mensajes) <= limite:
+        return mensajes
+    mensajes = [dict(m) for m in mensajes]
+    sistema = mensajes[:1] if mensajes and mensajes[0].get("role") == "system" else []
+    resto = mensajes[len(sistema):]
+    # Tu mensaje actual: el último «user» que no es resultado de una herramienta.
+    actual = max((i for i, m in enumerate(resto) if m.get("role") == "user" and not _texto(m).startswith("RESULTADO de")),
+                 default=len(resto) - 1)
+    historia, turno = resto[:actual], resto[actual:]
+
+    def total():
+        return sum(_tokens(_texto(m)) for m in sistema + historia + turno)
+
+    while historia and total() > limite:
+        historia.pop(0)
+    while total() > limite:
+        candidatos = [m for m in sistema + turno if isinstance(m.get("content"), str) and len(m["content"]) > 800]
+        if not candidatos:
+            break
+        m = max(candidatos, key=lambda x: len(x["content"]))
+        sobra = (total() - limite) * 3 + 200
+        nuevo = max(600, len(m["content"]) - sobra)
+        m["content"] = m["content"][:nuevo] + "\n[… recortado para que quepa]"
+    return sistema + historia + turno
 
 
 def _explicar_http(exc: urllib.error.HTTPError) -> str:
