@@ -175,3 +175,11 @@ def test_accion_con_ruta_de_windows_sin_duplicar():
     assert a["args"]["ruta"] == "C:\\Users\\aroon\\notas\\tarea.txt"
     b = _leer_accion(r'{"herramienta": "x", "args": {"ruta": "N:\\NOVORA\\a", "contenido": "uno\ndos"}}')
     assert b["args"]["ruta"] == "N:\\NOVORA\\a" and b["args"]["contenido"] == "uno\ndos"
+
+
+def test_auditoria_de_cada_llamada(crear_nova, config):
+    nova = crear_nova(['ACCION: {"herramienta": "calcular", "args": {"expresion": "2+2"}}', "FINAL: 4."])
+    nova.procesar("¿cuánto es 2+2?")
+    filas = [json.loads(l) for l in (config.rutas.estado / "auditoria.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert len(filas) == 2 and filas[0]["motor"] == "local" and "calcular" in filas[0]["accion"]
+    assert "2+2" not in filas[1]["accion"]  # la respuesta final no se guarda

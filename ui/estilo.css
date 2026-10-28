@@ -276,7 +276,15 @@ body.celular #microfono { width: 44px; height: 44px; }
 
 /* ------------------------------------------- escritorio (Tauri, transparente) */
 body.escritorio #charla { width: min(640px, 46vw); max-height: 70vh; }
-body.escritorio #entrada { display: none; }  /* en el escritorio se escribe en la barra, que se pega aquí abajo */
+body.escritorio #entrada { display: none; }
+#flechas { display: none; }
+body.escritorio #flechas:not([hidden]) { display: flex; gap: 6px; justify-content: flex-end; margin-top: -4px; }
+body.escritorio #conversacion:empty ~ #flechas, body.escritorio #conversacion.dormida ~ #flechas { visibility: hidden; }
+#flechas button {
+  border: 1px solid rgba(140, 170, 255, 0.45); background: rgba(6, 10, 22, 0.9); color: #fff;
+  border-radius: 999px; width: 34px; height: 26px; cursor: pointer; font-size: 12px;
+}
+#flechas button:hover { background: rgba(40, 60, 120, 0.95); }  /* en el escritorio se escribe en la barra, que se pega aquí abajo */
 body.escritorio .msg { font-size: 16px; }
 /* Sobre cualquier fondo de escritorio: vidrio oscuro detrás del texto y el orbe con contorno. */
 body.escritorio #conversacion {
@@ -303,7 +311,7 @@ body.escritorio #orbe {
 body.escritorio #indicadores span { background: rgba(6, 10, 22, 0.9); color: #fff; }
 
 /* ------------------------------------------------ barra para escribirle (Tauri) */
-body.barra { background: transparent; }
+body.barra { background: #080c1a; }
 body.barra #orbe, body.barra #indicadores, body.barra #conversacion, body.barra #toque { display: none; }
 body.barra #charla { left: 8px; right: 8px; top: 8px; bottom: 8px; justify-content: center; }
 body.barra #entrada { background: rgba(8, 12, 26, 0.94); border-color: rgba(140, 170, 255, 0.55); }

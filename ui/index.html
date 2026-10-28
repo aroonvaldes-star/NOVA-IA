@@ -26,6 +26,10 @@
 
 <main id="charla" class="interactivo">
   <div id="conversacion" role="log" aria-live="polite" aria-label="Conversación con NOVA"></div>
+  <div id="flechas" hidden>
+    <button type="button" id="subir" title="Subir la plática" aria-label="Subir la plática">▲</button>
+    <button type="button" id="bajar" title="Bajar la plática" aria-label="Bajar la plática">▼</button>
+  </div>
   <form id="entrada" autocomplete="off">
     <button type="button" id="microfono" title="Mantén presionado para hablar">🎙</button>
     <input id="texto" type="text" placeholder="Háblame o escribe… (Esc para esconder)" spellcheck="true">

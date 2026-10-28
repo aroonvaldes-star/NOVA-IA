@@ -21,6 +21,7 @@ import re
 import sys
 import threading
 import time
+import urllib.parse
 import uuid
 from typing import Any, Callable
 
@@ -205,6 +206,31 @@ class Nova:
                 return
         aprendizaje.extraer_con_modelo(self.motor, self.memoria, pendientes)
 
+    def _auditar(self, motor: Motor, salida: str = "", error: str = "") -> None:
+        """Registro de cada llamada a un modelo en estado/auditoria.jsonl: quién contestó, cuánto tardó, qué pidió.
+
+        Con un router (OmniRoute, OpenRouter) «modelo_real» dice qué proveedor respondió de verdad.
+        No guarda lo que escribiste ni la respuesta completa, solo un resumen corto, y nunca la clave.
+        """
+        m = getattr(motor, "metricas", None) or {}
+        fila = {
+            "fecha": dt.datetime.now().isoformat(timespec="seconds"),
+            "motor": "nube" if motor is self.cerebro else "local",
+            "modelo": getattr(motor, "modelo", ""),
+            "modelo_real": m.get("modelo_real", ""),
+            "endpoint": urllib.parse.urlsplit(getattr(motor, "endpoint", "") or "").netloc,
+            "segundos": m.get("segundos"),
+            "tokens_entrada": m.get("prompt_n"),
+            "tokens_salida": m.get("predicted_n"),
+            "accion": (ACCION.match(salida).group(1)[:200] if salida and ACCION.match(salida) else ""),
+            "error": error[:300],
+        }
+        try:
+            with open(self.config.rutas.estado / "auditoria.jsonl", "a", encoding="utf-8") as f:
+                f.write(json.dumps(fila, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
+
     def _anotar_tiempos(self) -> None:
         """Deja en estado/tiempos.log cuánto tardó cada respuesta, para saber qué la frena."""
         if self._inicio_turno is None:
@@ -298,6 +324,7 @@ class Nova:
         try:
             return self._pensar(pregunta, ctx, motor=self.cerebro)
         except (RuntimeError, OSError) as exc:
+            self._auditar(self.cerebro, error=str(exc))
             self.bus.publicar({"tipo": "aviso", "texto": f"No pude usar el cerebro grande ({exc}); lo pienso aquí."})
             return self._pensar(pregunta, ctx)
 
@@ -344,6 +371,7 @@ class Nova:
             salida = sin_pensamientos(motor.chat(mensajes, al_token=self._emisor()))
             if self._llamadas is not None:
                 self._llamadas.append({"motor": "nube" if motor is self.cerebro else "local", **(getattr(motor, "metricas", None) or {})})
+            self._auditar(motor, salida)
             m = ACCION.match(salida)
             if m:
                 try:

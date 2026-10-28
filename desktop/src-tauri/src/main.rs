@@ -235,7 +235,9 @@ fn crear_ventana(app: &AppHandle) -> tauri::Result<()> {
     let url_barra = format!("http://127.0.0.1:{PUERTO}/?barra=1").parse().expect("URL válida");
     let barra = WebviewWindowBuilder::new(app, "barra", WebviewUrl::External(url_barra))
         .title("Escríbele a NOVA")
-        .transparent(true)
+        // Ventana normal (no transparente): así recibe bien el touchpad y la rueda en Windows.
+        .transparent(false)
+        .background_color(tauri::window::Color(8, 12, 26, 255))
         .decorations(false)
         .always_on_top(true)
         .skip_taskbar(true)

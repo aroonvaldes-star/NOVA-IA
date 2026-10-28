@@ -317,7 +317,9 @@ class MotorLlama(Motor):
                 try:
                     trozo = json.loads(dato)
                     if trozo.get("timings"):
-                        self.metricas = dict(trozo["timings"])
+                        self.metricas = {**self.metricas, **trozo["timings"]}
+                    if trozo.get("model") and "modelo_real" not in self.metricas:
+                        self.metricas["modelo_real"] = str(trozo["model"])[:120]  # con un router, quién contestó de verdad
                     delta = (trozo.get("choices") or [{}])[0].get("delta", {}).get("content") or ""
                 except (ValueError, KeyError, IndexError, AttributeError):
                     continue

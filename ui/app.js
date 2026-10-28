@@ -576,6 +576,11 @@ if (MODO === 'escritorio') {
   listen('desplazar', (e) => { despertar(); conversacion.scrollBy({ top: Number(e.payload) || 0 }); });
   // Con la rueda o el touchpad encima, la conversación despierta y se desplaza.
   conversacion.addEventListener('wheel', () => despertar(), { passive: true });
+  // Flechas junto a la plática: en la ventana transparente algunos touchpads no desplazan.
+  const flechas = $('#flechas');
+  flechas.hidden = false;
+  $('#subir').addEventListener('click', () => { despertar(); conversacion.scrollBy({ top: -conversacion.clientHeight * 0.6, behavior: 'smooth' }); });
+  $('#bajar').addEventListener('click', () => { despertar(); conversacion.scrollBy({ top: conversacion.clientHeight * 0.6, behavior: 'smooth' }); });
   listen('hablar', (e) => (e.payload.activo ? empezarGrabacion() : terminarGrabacion()));
   // Clic en el orbe: abre la barra para escribirle.
   const toque = $('#toque');
@@ -596,7 +601,7 @@ if (MODO === 'escritorio') {
       if (r.width && r.height) zonas.push([r.left, r.top, r.width, r.height]);
     };
     agregar(toque);
-    if (!conversacion.classList.contains('dormida')) agregar(conversacion);
+    if (!conversacion.classList.contains('dormida')) { agregar(conversacion); agregar(flechas); }
     invoke('zonas', { zonas }).catch(() => {});
     // La barra se abre justo debajo de la conversación (o del orbe si todavía no hay plática).
     const c = $('#charla').getBoundingClientRect();
