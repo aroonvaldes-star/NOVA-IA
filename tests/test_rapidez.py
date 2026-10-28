@@ -166,3 +166,12 @@ def test_recorta_para_que_quepa():
     assert "recortado" in r[-1]["content"]
     assert len(pagina["content"]) == 40023  # no toca los originales
     assert recortar([sistema, actual], 4000) == [sistema, actual]
+
+
+def test_accion_con_ruta_de_windows_sin_duplicar():
+    from nova.nucleo import _leer_accion
+
+    a = _leer_accion(r'{"herramienta": "leer_archivo", "args": {"ruta": "C:\Users\aroon\notas\tarea.txt"}}')
+    assert a["args"]["ruta"] == "C:\\Users\\aroon\\notas\\tarea.txt"
+    b = _leer_accion(r'{"herramienta": "x", "args": {"ruta": "N:\\NOVORA\\a", "contenido": "uno\ndos"}}')
+    assert b["args"]["ruta"] == "N:\\NOVORA\\a" and b["args"]["contenido"] == "uno\ndos"

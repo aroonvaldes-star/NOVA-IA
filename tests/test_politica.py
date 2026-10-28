@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from nova import politica as p
@@ -82,6 +84,7 @@ def test_unidad_excluida():
     ("/home/aroon/proyecto/a.py", True), ("/etc/passwd", False), ("/home/aroon/.ssh/id", False),
     ("relativa", False), ("/proc/1/mem", False),
 ])
+@pytest.mark.skipif(sys.platform == "win32", reason="reglas de Linux; en Windows rigen las de Windows")
 def test_rutas_posix(ruta, ok):
     assert p.revisar_ruta_texto(ruta, windows=False).ok is ok
 

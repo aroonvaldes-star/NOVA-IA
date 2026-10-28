@@ -101,6 +101,7 @@ def test_url_escrita_por_el_usuario_se_lee_antes_de_pensar(crear_nova, internet_
 
 def test_escribir_archivo_con_confirmacion(crear_nova, tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))  # la carpeta personal en Windows
     destino = tmp_path / "notas" / "plan.md"
     nova = crear_nova(['ACCION: {"herramienta": "escribir_archivo", "args": {"ruta": "%s", "contenido": "# Plan"}}' % destino,
                        "FINAL: Te dejé la propuesta."])

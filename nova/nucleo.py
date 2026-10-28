@@ -322,7 +322,7 @@ class Nova:
             m = ACCION.match(salida)
             if m:
                 try:
-                    accion = json.loads(_primer_json(m.group(1)))
+                    accion = _leer_accion(_primer_json(m.group(1)))
                     nombre, args = str(accion.get("herramienta", "")), accion.get("args") or {}
                 except (ValueError, AttributeError):
                     mensajes += [{"role": "assistant", "content": salida},
@@ -682,6 +682,26 @@ def _primer_json(texto: str) -> str:
             if nivel == 0:
                 return texto[: i + 1]
     return texto
+
+
+_RUTA_WINDOWS = re.compile(r'"([A-Za-z]:\\(?:[^"\\]|\\.)*)"')
+
+
+def _leer_accion(texto: str) -> dict:
+    r"""El JSON de una ACCION, tolerando rutas de Windows con «\» sencilla.
+
+    El modelo suele escribir "C:\Users\aroon\notas" sin duplicar las diagonales: «\U» y «\a» no
+    son escapes válidos de JSON, y «\n» o «\t» se volverían saltos de línea dentro de la ruta.
+    Las cadenas que empiezan con una unidad (C:\) se toman tal cual las escribió.
+    """
+    def duplicar(m: re.Match) -> str:
+        ruta = m.group(1).replace("\\\\", "\x00")  # las ya duplicadas se quedan igual
+        return '"' + ruta.replace("\\", "\\\\").replace("\x00", "\\\\") + '"'
+
+    try:
+        return json.loads(_RUTA_WINDOWS.sub(duplicar, texto))
+    except ValueError:
+        return json.loads(texto)
 
 
 def _inactivo_min(ultima_actividad: float) -> float:
