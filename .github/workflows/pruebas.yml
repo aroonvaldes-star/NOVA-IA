@@ -57,7 +57,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Guardar OmniRoute entre pruebas (npm tarda unos 20 minutos)
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~\AppData\Local\NOVA\node
+            ~\AppData\Local\NOVA\omniroute
+          key: omniroute-3.8.52
+          restore-keys: omniroute-
       - name: Instalar OmniRoute con omniroute.ps1
+        id: instalar
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force "$env:APPDATA\NOVA" | Out-Null
@@ -66,13 +76,25 @@ jobs:
           # En otro proceso con limite de tiempo: si se cuelga, igual se ve en que paso iba.
           $p = Start-Process powershell -ArgumentList '-NoProfile -ExecutionPolicy Bypass -Command "try { & .\omniroute.ps1 -SinPreguntas *>&1 | Out-File -Encoding utf8 salida.txt } catch { (''ERROR: '' + $_.Exception.Message) | Out-File -Append -Encoding utf8 salida.txt }"' -PassThru -NoNewWindow
           $termino = $p.WaitForExit(1500 * 1000)
-          if (Test-Path salida.txt) { Get-Content salida.txt | Where-Object { $_.Trim() } | Select-Object -Last 40 | ForEach-Object { Write-Host "::notice::$($_ -replace '[\r\n]', ' ')" } }
+          # GitHub muestra solo 10 avisos por paso: van varias lineas en cada uno.
+          if (Test-Path salida.txt) {
+            $lineas = @(Get-Content salida.txt | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() })
+            for ($i = 0; $i -lt $lineas.Count; $i += 12) { Write-Host "::notice::$(($lineas[$i..([Math]::Min($i + 11, $lineas.Count - 1))]) -join ' | ')" }
+          }
           foreach ($f in "$env:LOCALAPPDATA\NOVA\estado\omniroute.log", "$env:LOCALAPPDATA\NOVA\estado\omniroute-errores.log", "$env:LOCALAPPDATA\NOVA\estado\omniroute-npm-errores.log") {
-            if (Test-Path $f) { Get-Content $f -Tail 12 | ForEach-Object { Write-Host "::notice::$(Split-Path $f -Leaf): $($_ -replace '[\r\n]', ' ')" } }
+            if (Test-Path $f) { Write-Host "::notice::$(Split-Path $f -Leaf): $((Get-Content $f -Tail 12) -join ' | ')" }
           }
           if (-not $termino) { Write-Host '::error::omniroute.ps1 no termino en 25 minutos'; Get-Process node, npm -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "::error::sigue vivo: $($_.Name) $($_.Id)" }; exit 1 }
           if ((Get-Content salida.txt -Raw) -match 'Listo\. Panel de OmniRoute') { exit 0 }
           Write-Host '::error::omniroute.ps1 fallo (ver avisos)'; exit 1
+      - name: Guardar lo instalado para la siguiente prueba
+        if: always() && steps.instalar.outcome == 'success' && steps.cache.outputs.cache-matched-key == ''
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~\AppData\Local\NOVA\node
+            ~\AppData\Local\NOVA\omniroute
+          key: omniroute-3.8.52
       - name: Revisar que quede seguro y conectado a NOVA
         shell: powershell
         run: |
@@ -104,10 +126,12 @@ jobs:
           $con = Pedir '/v1/models' $c.cerebro_clave $null
           Write-Host "::notice::/v1/models sin clave: $($sin.Codigo); con la clave de NOVA: $($con.Codigo)"
           if ($c.cerebro_clave -and $sin.Codigo -eq 200) { Falla 'OmniRoute contesta sin clave aunque NOVA tiene una' }
-          if ($con.Codigo -ne 200) { Falla "Con la clave de NOVA /v1/models dio $($con.Codigo): $($con.Texto.Substring(0, [Math]::Min(200, $con.Texto.Length)))" }
+          if ($c.cerebro_clave -and $con.Codigo -ne 200) { Falla "Con la clave de NOVA /v1/models dio $($con.Codigo): $($con.Texto.Substring(0, [Math]::Min(200, $con.Texto.Length)))" }
           $chat = Pedir '/v1/chat/completions' $c.cerebro_clave '{"model":"auto","messages":[{"role":"user","content":"hola"}],"max_tokens":5}'
           $t = ($chat.Texto -replace '[\r\n]', ' ')
           Write-Host "::notice::chat auto con clave de Groq falsa: $($chat.Codigo) $($t.Substring(0, [Math]::Min(300, $t.Length)))"
+          # Con la clave falsa de Groq debe llegar hasta Groq (que la rechaza), no quedarse en OmniRoute.
+          if ($chat.Texto -notmatch 'groq') { Falla 'El modelo auto no paso la peticion a Groq' }
           if ($mal) { exit 1 }
       - name: NOVA lo vuelve a prender sola
         shell: pwsh
