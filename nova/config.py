@@ -76,6 +76,11 @@ DEFECTO: dict[str, Any] = {
     "orbe_libre": True,
     # Conversación: al reabrir NOVA retoma lo de las últimas horas; lo más viejo queda en la memoria
     "retomar_horas": 3,
+    # Skills (carpetas con SKILL.md, formato Agent Skills): la de NOVA, %APPDATA%\NOVA\skills y estas
+    "skills": True,
+    "skills_carpetas": ["~/.claude/skills"],
+    "skills_max_chars": 2500,  # lo más que entra de una skill al prompt (el modelo local es chico)
+    "skills_catalogo_chars": 900,
     # Memoria personal
     "memoria_personal": True,
     "perfil_max_chars": 1600,

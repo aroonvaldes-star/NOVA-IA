@@ -133,6 +133,7 @@ class CajaDeHerramientas:
         self.urls_permitidas: set[str] = set()
         self.leyo_privado = False
         self.vision = False  # lo ajusta el núcleo según el motor
+        self.skills = None  # lo pone el núcleo
 
     def nueva_tarea(self, mensaje_usuario: str) -> None:
         """Al empezar un turno: las URLs que escribiste tú quedan permitidas."""
@@ -355,8 +356,12 @@ class CajaDeHerramientas:
         if not chequeo.ok:
             return Resultado(f"No puedo escribir ahí: {chequeo.motivo}", "archivo")
         vista = contenido[:400] + ("…" if len(contenido) > 400 else "")
-        return self._proponer(f"Escribir {len(contenido)} caracteres en {chequeo.ruta}\n\n{vista}",
-                              lambda: self._escribir(ruta, contenido), solo_clic=chequeo.confirmar)
+        aviso, solo_clic = "", chequeo.confirmar
+        if self.skills and self.skills.contiene(chequeo.ruta):
+            # Una skill son instrucciones que NOVA seguirá después: solo con tu clic, nunca por voz.
+            aviso, solo_clic = "\n(Es una carpeta de skills: NOVA seguirá estas instrucciones.)", True
+        return self._proponer(f"Escribir {len(contenido)} caracteres en {chequeo.ruta}{aviso}\n\n{vista}",
+                              lambda: self._escribir(ruta, contenido), solo_clic=solo_clic)
 
     def _escribir(self, ruta: str, contenido: str) -> dict:
         chequeo = politica.revisar_ruta(ruta, escribir=True, excluidas=self.config.unidades_excluidas)  # se revalida
@@ -405,6 +410,12 @@ class CajaDeHerramientas:
             extra = f"{u.get('libre_gb', '?')} GB libres de {u.get('total_gb', '?')} GB" if "total_gb" in u else u.get("estado", "")
             filas.append(f"{u['unidad']} {u.get('nombre', '')} ({u.get('tipo', '')}): {extra}")
         return Resultado("\n".join(filas), "unidades")
+
+    def h_usar_skill(self, nombre: str, archivo: str = "") -> Resultado:
+        if not self.skills:
+            return Resultado("Las skills están desactivadas.", "skill")
+        return Resultado(self.skills.leer(str(nombre), str(archivo or ""), self.config.skills_max_chars, self.config.max_file_bytes),
+                         f"skill {nombre}")
 
     def _proponer(self, descripcion: str, accion: Callable[[], Any], solo_clic: bool = False) -> Resultado:
         p = self.confirmaciones.pedir(descripcion, accion, solo_clic)

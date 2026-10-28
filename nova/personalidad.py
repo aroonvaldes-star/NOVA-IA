@@ -23,6 +23,7 @@ HERRAMIENTAS_DOC = """Herramientas (una por paso):
 - calcular {"expresion": "..."}
 - nota {"texto": "..."} / tarea {"texto": "...", "fecha": "AAAA-MM-DD"}
 - unidades {}: discos y espacio libre.
+- usar_skill {"nombre": "...", "archivo": ""}: abre las instrucciones de una de tus skills (o uno de sus archivos).
 
 Formato estricto. Para usar una herramienta responde SOLO:
 ACCION: {"herramienta": "nombre", "args": {...}}
@@ -104,9 +105,10 @@ def _dia(fecha: dt.datetime) -> str:
     return ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"][fecha.weekday()]
 
 
-def prompt_sistema(personalidad: str, estado: str, perfil: str, contexto_relevante: str, con_herramientas: bool = True) -> str:
-    # Primero lo que no cambia entre turnos (personalidad, herramientas, reglas) y al final lo que sí
-    # (perfil, recuerdos, hora, ventana): así llama-server reutiliza lo ya leído y contesta antes.
+def prompt_sistema(personalidad: str, estado: str, perfil: str, contexto_relevante: str, con_herramientas: bool = True,
+                   skills: str = "", skill_activa: str = "") -> str:
+    # Primero lo que no cambia entre turnos (personalidad, herramientas, reglas, catálogo de skills) y al final lo
+    # que sí (skill del turno, perfil, recuerdos, hora, ventana): así llama-server reutiliza lo ya leído y contesta antes.
     partes = [personalidad.strip()]
     if con_herramientas:
         partes.append("## Herramientas\n" + HERRAMIENTAS_DOC + "\n\nTienes internet: si no sabes algo o depende de datos "
@@ -115,6 +117,10 @@ def prompt_sistema(personalidad: str, estado: str, perfil: str, contexto_relevan
                       "abierto, usa ver_pantalla. Si menciona un archivo o proyecto suyo, usa buscar_archivos o buscar_memoria; si te pide analizar una carpeta, usa analizar_carpeta. "
                       "Responde a lo que el usuario pide AHORA; no retomes temas viejos si no los menciona. "
                       "Nunca inventes datos. Responde en español y corto (1 a 3 frases) salvo que te pidan detalle.")
+    if skills:
+        partes.append("## Mis skills (si una sirve para lo que pide el usuario, ábrela con usar_skill y síguela)\n" + skills)
+    if skill_activa:
+        partes.append("## Skill para esta tarea (síguela)\n" + skill_activa)
     if perfil:
         partes.append("## Lo que sé de mi usuario\n" + perfil)
     if contexto_relevante:

@@ -104,6 +104,8 @@ def orden_rapida(texto: str) -> OrdenRapida | None:
         return OrdenRapida("privado", {"activo": True})
     if re.fullmatch(r"(ya puedes recordar|sal del modo privado|termina el modo privado)", t):
         return OrdenRapida("privado", {"activo": False})
+    if re.fullmatch(r"(que|cuales) (skills|habilidades) tienes|(tus|mis|lista de|ver) (skills|habilidades)|skills", t):
+        return OrdenRapida("skills", {})
     if re.fullmatch(r"(tu estado|estado|que eres|quien eres)", t):
         return OrdenRapida("estado", {})
     if re.fullmatch(r"(conecta|conectar|vincula|empareja) (mi |el )?(celular|telefono|movil)", t):
