@@ -13,6 +13,11 @@ tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+[features]
+# Sin la CLI de Tauri, la compilación final necesita esto para usar la interfaz empaquetada.
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
 [profile.release]
 codegen-units = 1
 lto = true

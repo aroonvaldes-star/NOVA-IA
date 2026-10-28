@@ -1,0 +1,45 @@
+# Compila el orbe de escritorio (nova-escritorio.exe) en Windows y lo deja en la rama «escritorio».
+# instalar.bat y actualizar.bat lo bajan de ahí con git, así no hace falta Rust en tu PC.
+name: Orbe de escritorio
+
+on:
+  push:
+    branches: [main]
+    paths: ["desktop/**", ".github/workflows/escritorio.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: escritorio
+  cancel-in-progress: true
+
+jobs:
+  compilar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      - name: Compilar
+        working-directory: desktop/src-tauri
+        run: cargo build --release --locked
+      - name: Publicar en la rama escritorio
+        shell: bash
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir salida
+          cp desktop/src-tauri/target/release/nova-escritorio.exe salida/
+          cd salida
+          echo "$GITHUB_SHA" > VERSION
+          git init -q -b escritorio
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -qm "Orbe de escritorio de ${GITHUB_SHA::7}"
+          # Siempre un solo commit: el .exe no se acumula en el historial.
+          git push -qf "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" escritorio

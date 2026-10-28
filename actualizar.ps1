@@ -5,14 +5,16 @@
 #   1. Cierra NOVA si esta abierta.
 #   2. Baja solo lo que cambio (git). La primera vez conecta esta carpeta con el repositorio.
 #   3. Si cambiaron las dependencias, las reinstala en el entorno de NOVA.
-#   4. Vuelve a abrir NOVA.
+#   4. Baja el orbe libre de escritorio si hay uno nuevo y rehace los accesos directos.
+#   5. Vuelve a abrir NOVA (libre en el escritorio, o en su ventana con -Ventana).
 #
 # Si guardaste cambios tuyos en estos archivos, no se pierden: quedan en "git stash".
 #
 # Opciones:
 #   -SinAbrir   no abre NOVA al terminar
+#   -Ventana    la abre en su ventana en vez de libre en el escritorio
 
-param([switch]$SinAbrir)
+param([switch]$SinAbrir, [switch]$Ventana)
 
 $ErrorActionPreference = 'Stop'
 $Repo = 'https://github.com/aroonvaldes-star/NOVA-IA.git'
@@ -56,7 +58,7 @@ if (-not (Test-Path (Join-Path $Raiz '.git'))) {
 
 # ------------------------------------------------------------ 2. Cerrar NOVA
 
-$abiertos = Get-Process -Name 'llama-server', 'whisper-cli', 'piper', 'pythonw', 'python' -ErrorAction SilentlyContinue |
+$abiertos = Get-Process -Name 'llama-server', 'whisper-cli', 'piper', 'pythonw', 'python', 'nova-escritorio' -ErrorAction SilentlyContinue |
     Where-Object { $_.Path -and $_.Path.StartsWith($Datos, [StringComparison]::OrdinalIgnoreCase) }
 if ($abiertos) {
     Aviso 'NOVA estaba abierta; la cierro para actualizarla.'
@@ -101,6 +103,13 @@ if (-not $antes -or ($cambiaron -contains 'pyproject.toml')) {
     & $py -m pip install --disable-pip-version-check -q -e "$Raiz[completo]"
     Bien 'Listas'
 }
+Paso 'Orbe de escritorio'
+. (Join-Path $Raiz 'escritorio.ps1')
+$exeEscritorio = Obtener-Escritorio $Raiz $Datos
+Crear-Accesos $Raiz $Datos $exeEscritorio
+if ($exeEscritorio) { Bien 'Listo: "NOVA" la abre libre en el escritorio y "NOVA en ventana" en su ventana.' }
+else { Aviso 'Todavia no hay orbe de escritorio compilado; sigo con la ventana.' }
+
 if ($cambiaron -contains 'instalar.ps1') {
     Aviso 'Tambien cambio el instalador: cuando puedas, abre instalar.bat (lo ya descargado no se baja otra vez).'
 }
@@ -109,7 +118,8 @@ if ($cambiaron -contains 'instalar.ps1') {
 
 if (-not $SinAbrir) {
     Paso 'Abriendo NOVA'
-    Start-Process -FilePath (Join-Path $Venv 'Scripts\pythonw.exe') -ArgumentList '-m nova servidor --abrir' -WorkingDirectory $Raiz
+    if ($exeEscritorio -and -not $Ventana) { Start-Process -FilePath $exeEscritorio -WorkingDirectory $Raiz }
+    else { Start-Process -FilePath (Join-Path $Venv 'Scripts\pythonw.exe') -ArgumentList '-m nova servidor --abrir' -WorkingDirectory $Raiz }
 }
 Write-Host ''
 Write-Host 'Listo.' -ForegroundColor Green

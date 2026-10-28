@@ -14,6 +14,11 @@ Si GitHub te pide entrar, hazlo con tu cuenta en la ventana que abre. El instala
 
 **Desde entonces**, cada vez que te avise de cambios: doble clic en `actualizar.bat`. Cierra NOVA, baja solo lo que cambió, reinstala dependencias si hace falta y la vuelve a abrir. Si cambia el instalador, te avisa para correr `instalar.bat`.
 
+**NOVA libre en el escritorio.** Con la carpeta conectada a GitHub, el instalador y `actualizar.bat` bajan el orbe de escritorio ya compilado. Quedan dos accesos:
+
+- **NOVA** (Ctrl+Alt+N): el orbe flota libre sobre tus ventanas, sin marco, y deja pasar los clics. **Ctrl+Alt+A** muestra u oculta la barra para escribirle y **Ctrl+Alt+Espacio** (mantenido) es para hablarle. Para cerrarla, usa el icono de NOVA junto al reloj → Salir.
+- **NOVA en ventana**: la ventana de siempre.
+
 ## Actualizar a la 0.2 con el zip (si no usas GitHub)
 
 1. Cierra NOVA.

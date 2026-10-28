@@ -8,7 +8,8 @@
 #   4. Descarga el modelo (Qwen3 4B Instruct, Q4_K_M, unos 2.5 GB) a %LOCALAPPDATA%\NOVA\models,
 #      y el modelo con vista (Qwen3-VL 4B Instruct + su proyector, unos 3.3 GB) para ver tu pantalla.
 #   5. Descarga el oido (whisper.cpp + modelo small) y la voz (Piper + voz es_MX).
-#   6. Crea los accesos directos "NOVA" en el menu Inicio y el escritorio (Ctrl+Alt+N).
+#   6. Baja el orbe libre de escritorio (si la carpeta esta conectada con GitHub) y crea los accesos
+#      "NOVA" (orbe libre, Ctrl+Alt+N) y "NOVA en ventana" en el menu Inicio y el escritorio.
 #   7. Corre `nova diagnostico` y abre NOVA.
 #
 # Puedes volver a ejecutarlo: lo que ya esta descargado y verificado no se baja otra vez.
@@ -37,6 +38,7 @@ $Datos = Join-Path $env:LOCALAPPDATA 'NOVA'
 $Venv = Join-Path $Datos 'venv'
 $Descargas = Join-Path $Datos 'descargas'
 $Agente = @{ 'User-Agent' = 'NOVA-instalador' }
+. (Join-Path $Raiz 'escritorio.ps1')
 
 function Paso($texto) { Write-Host "`n== $texto" -ForegroundColor Cyan }
 function Bien($texto) { Write-Host "   OK  $texto" -ForegroundColor Green }
@@ -184,7 +186,7 @@ Bien "Python: $($python -join ' ')"
 # ------------------------------------------------------------- 2. Entorno
 
 # Si NOVA esta abierta, sus programas tienen tomados los archivos que vamos a reemplazar.
-$abiertos = Get-Process -Name 'llama-server', 'whisper-cli', 'piper', 'pythonw', 'python' -ErrorAction SilentlyContinue |
+$abiertos = Get-Process -Name 'llama-server', 'whisper-cli', 'piper', 'pythonw', 'python', 'nova-escritorio' -ErrorAction SilentlyContinue |
     Where-Object { $_.Path -and $_.Path.StartsWith($Datos, [StringComparison]::OrdinalIgnoreCase) }
 if ($abiertos) {
     Aviso 'NOVA estaba abierta; la cierro para poder actualizarla.'
@@ -347,21 +349,14 @@ if (-not $SinVoz) {
 
 Paso 'Accesos directos'
 $pyw = Join-Path $Venv 'Scripts\pythonw.exe'
-$icono = Join-Path $Raiz 'desktop\src-tauri\icons\icon.ico'
-$shell = New-Object -ComObject WScript.Shell
-$inicio = Join-Path ([Environment]::GetFolderPath('Programs')) 'NOVA.lnk'
-$escritorio = Join-Path ([Environment]::GetFolderPath('Desktop')) 'NOVA.lnk'
-foreach ($destino in @($inicio, $escritorio)) {
-    $lnk = $shell.CreateShortcut($destino)
-    $lnk.TargetPath = $pyw
-    $lnk.Arguments = '-m nova servidor --abrir'
-    $lnk.WorkingDirectory = $Raiz
-    $lnk.IconLocation = $icono
-    $lnk.Description = 'NOVA, tu asistente'
-    if ($destino -eq $inicio) { $lnk.Hotkey = 'CTRL+ALT+N' }
-    $lnk.Save()
+$exeEscritorio = Obtener-Escritorio $Raiz $Datos
+Crear-Accesos $Raiz $Datos $exeEscritorio
+if ($exeEscritorio) {
+    Bien 'NOVA libre en tu escritorio (menu Inicio y escritorio, Ctrl+Alt+N) y "NOVA en ventana"'
+} else {
+    Bien 'NOVA en el menu Inicio y en el escritorio (atajo: Ctrl+Alt+N)'
+    Aviso 'El orbe libre de escritorio llega cuando la carpeta esta conectada con GitHub (ver PRUEBA-WINDOWS.md).'
 }
-Bien 'NOVA en el menu Inicio y en el escritorio (atajo: Ctrl+Alt+N)'
 
 # ---------------------------------------------------------- 7. Diagnostico
 
@@ -372,7 +367,8 @@ $fallas = $LASTEXITCODE
 
 if (-not $SinAbrir) {
     Paso 'Abriendo NOVA'
-    Start-Process -FilePath $pyw -ArgumentList '-m nova servidor --abrir' -WorkingDirectory $Raiz
+    if ($exeEscritorio) { Start-Process -FilePath $exeEscritorio -WorkingDirectory $Raiz }
+    else { Start-Process -FilePath $pyw -ArgumentList '-m nova servidor --abrir' -WorkingDirectory $Raiz }
 }
 Write-Host ''
 if ($fallas -eq 0) {
