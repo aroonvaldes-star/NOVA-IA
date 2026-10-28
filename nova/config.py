@@ -36,7 +36,8 @@ DEFECTO: dict[str, Any] = {
     "cerebro_modelo": "Qwen3 8B en Oracle",  # nombre para mostrar
     "cerebro_api_modelo": "",  # nombre que pide el servicio (p. ej. "openai.gpt-oss-120b" en Oracle IA generativa)
     "cerebro_auto": False,  # True: usa el cerebro grande para todo cuando responde (rápido en la nube); sin red, el local
-    "cerebro_max_entrada": 6000,  # tokens por petición (Groq gratis acepta 8,000 por minuto)
+    "cerebro_max_entrada": 2500,  # tokens que manda por petición (Groq gratis acepta 8,000 por minuto en total)
+    "cerebro_max_salida": 700,  # tokens de respuesta (también cuentan para ese límite)
     # Servidor de la interfaz
     "web_port": 8190,
     # Conexión directa con el celular (red local, solo dispositivos emparejados)

@@ -133,6 +133,8 @@ class CajaDeHerramientas:
         self.urls_permitidas: set[str] = set()
         self.leyo_privado = False
         self.vision = False  # lo ajusta el núcleo según el motor
+        # Si quien piensa no tiene vista (el cerebro grande), el modelo local mira la captura y la describe.
+        self.describir_imagen: Callable[[str, str], str] | None = None
         self.skills = None  # lo pone el núcleo
 
     def nueva_tarea(self, mensaje_usuario: str) -> None:
@@ -307,6 +309,14 @@ class CajaDeHerramientas:
         if self.vision:
             return Resultado(f"{ventana} Captura de {captura.ancho}x{captura.alto} adjunta.", "pantalla", imagen=captura.data_url())
         texto = pantalla.leer_texto(captura)
+        if self.describir_imagen:
+            try:
+                vista = self.describir_imagen(captura.data_url(), pregunta)
+            except (RuntimeError, OSError):
+                vista = ""
+            if vista:
+                return Resultado(f"{ventana}\nLo que se ve en la pantalla (lo miró mi modelo con vista):\n{vista}"
+                                 + (f"\n\nTexto que se lee (OCR):\n{texto[:1500]}" if texto else ""), "pantalla")
         if not texto:
             return Resultado(f"{ventana} Tomé la captura, pero no tengo vista ni pude leer texto en ella "
                              "(el OCR de Windows necesita el paquete de idioma).", "pantalla")

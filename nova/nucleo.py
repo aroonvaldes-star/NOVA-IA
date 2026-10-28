@@ -114,6 +114,8 @@ class Nova:
         self.platica = platica.EstadoPlatica()
         self.observador = pantalla.Observador()
         self.herramientas.vision = bool(getattr(self.motor, "vision", False))
+        if self.herramientas.vision:
+            self.herramientas.describir_imagen = self._describir_imagen
         self.skills = Skills.desde_config(config) if config.skills else None
         if self.skills:
             self.skills.preparar()
@@ -401,6 +403,16 @@ class Nova:
             return [{"role": "assistant", "content": 'ACCION: {"herramienta": "buscar_web", "args": ' + json.dumps({"consulta": consulta}, ensure_ascii=False) + "}"},
                     _mensaje_resultado("buscar_web", r, "Usa esto si sirve para responder; cita las páginas.")]
         return None
+
+    def _describir_imagen(self, data_url: str, pregunta: str) -> str:
+        """El modelo local (con vista) mira una captura y la describe en texto, para el cerebro grande."""
+        return sin_pensamientos(self.motor.chat([
+            {"role": "system", "content": "Describe con precisión lo que se ve en esta captura de pantalla, en español: la app, "
+                                          "los textos importantes (cópialos tal cual), errores, código y lo que está haciendo el usuario. "
+                                          "No inventes lo que no se lee."},
+            {"role": "user", "content": [{"type": "text", "text": pregunta or "¿Qué se ve en mi pantalla?"},
+                                         {"type": "image_url", "image_url": {"url": data_url}}]},
+        ], max_tokens=500, temperatura=0.2)).strip()
 
     def _revisar_local(self, texto: str, ctx: str) -> list[dict] | None:
         """Si escribiste una ruta, la revisa antes de pensar (carpeta: la analiza; archivo: lo lee)."""

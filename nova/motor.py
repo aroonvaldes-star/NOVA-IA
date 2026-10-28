@@ -277,8 +277,12 @@ class MotorLlama(Motor):
         """Cuántos tokens de entrada caben en una petición."""
         return int(getattr(self, "contexto", 0) or self.config.context)
 
+    def _max_salida(self) -> int:
+        return 4096
+
     def chat(self, mensajes, al_token=None, temperatura=0.6, max_tokens=1024) -> str:
         self.asegurar()
+        max_tokens = min(max_tokens, self._max_salida())
         mensajes = recortar(mensajes, self._presupuesto() - max_tokens - 256)
         cuerpo = json.dumps({
             "model": self._nombre_api(), "messages": mensajes, "stream": True,
@@ -291,10 +295,17 @@ class MotorLlama(Motor):
                                           headers={"Content-Type": "application/json", "User-Agent": f"NOVA/{__version__}",
                                                    **self._cabeceras()})
         texto = []
-        try:
-            r = urllib.request.urlopen(peticion, timeout=600)
-        except urllib.error.HTTPError as exc:
-            raise RuntimeError(_explicar_http(exc)) from exc
+        for intento in range(2):
+            try:
+                r = urllib.request.urlopen(peticion, timeout=600)
+                break
+            except urllib.error.HTTPError as exc:
+                # Límite por minuto (Groq gratis): si pide esperar poco, espera y reintenta una vez.
+                espera = _segundos(exc.headers.get("retry-after")) if exc.code == 429 else None
+                if intento == 0 and espera is not None and espera <= 25:
+                    time.sleep(espera + 0.5)
+                    continue
+                raise RuntimeError(_explicar_http(exc)) from exc
         with r:
             for linea in r:
                 linea = linea.decode("utf-8", "replace").strip()
@@ -382,8 +393,11 @@ class MotorRemoto(MotorLlama):
         return self.config.cerebro_api_modelo or "nova-cerebro"
 
     def _presupuesto(self) -> int:
-        # Groq gratis: 8,000 tokens por minuto; una petición más grande la rechaza entera.
-        return int(self.config.cerebro_max_entrada)
+        # Groq gratis: 8,000 tokens por minuto, contando lo que manda y lo que puede contestar.
+        return int(self.config.cerebro_max_entrada) + self._max_salida() + 256
+
+    def _max_salida(self) -> int:
+        return int(self.config.cerebro_max_salida)
 
     def _extras_peticion(self) -> dict:
         # Los servicios en la nube rechazan campos que no conocen; solo lo que sabemos que aceptan.
@@ -413,6 +427,13 @@ class MotorRemoto(MotorLlama):
 
     def detener(self) -> None:
         pass
+
+
+def _segundos(valor: str | None) -> float | None:
+    try:
+        return max(0.0, float(valor)) if valor is not None else None
+    except ValueError:
+        return None
 
 
 def _tokens(texto: str) -> int:
