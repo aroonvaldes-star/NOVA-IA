@@ -41,7 +41,8 @@ function Bien($texto) { Write-Host "   OK  $texto" -ForegroundColor Green }
 function Aviso($texto) { Write-Host "   !   $texto" -ForegroundColor Yellow }
 
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+# Las maquinas de prueba de GitHub siempre son administrador; en tu PC nunca se acepta.
+if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) -and $env:GITHUB_ACTIONS -ne 'true') {
     Write-Host 'OmniRoute se instala con tu usuario normal, no como administrador.' -ForegroundColor Red
     Write-Host 'Cierra esta ventana y vuelve a abrir omniroute.bat con doble clic.'
     exit 1
