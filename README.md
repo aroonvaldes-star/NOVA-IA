@@ -2,7 +2,7 @@
 
 NOVA es una asistente de inteligencia artificial que vive en tu computadora. Es un proyecto propio e independiente: tiene su motor, su memoria, su voz, su personalidad y su avatar, un orbe holográfico que flota libre por tu escritorio. Funciona sin internet y, cuando hay conexión y no sabe algo, lo busca en seguida.
 
-> **Estado: versión 0.2.0.** Ya se instaló y abrió en la PC de Aroon (Windows 11, RTX 3050). La 0.2 agrega la conversación junto al orbe, búsqueda en internet antes de contestar, ver la pantalla y conocer tus carpetas; está probada en Linux (213 pruebas automáticas y la interfaz en Chromium), falta probarla en Windows con el modelo real: ver [Pendiente de verificar](#pendiente-de-verificar).
+> **Estado: versión 1.4.0.** Instalada en la PC de Aroon (Windows 11, RTX 3050). Se actualiza desde este repositorio con `actualizar.bat`. Cada cambio corre 263 pruebas en Linux y en Windows (GitHub Actions), y GitHub compila el orbe de escritorio. Falta probar en la PC de Aroon lo que depende de su equipo: ver [Pendiente de verificar](#pendiente-de-verificar).
 
 ![Estados del orbe: procesando, buscando, hablando y activa en tecnología](docs/capturas/estados.png)
 
@@ -10,7 +10,7 @@ NOVA es una asistente de inteligencia artificial que vive en tu computadora. Es 
 
 | | |
 |---|---|
-| **Motor propio** | Lanza `llama-server` (llama.cpp) dentro de la app, solo en `127.0.0.1`, cuando lo necesitas, y lo apaga tras 10 minutos sin uso. En Windows vive en un Job Object: si NOVA se cierra, el motor muere con ella. |
+| **Motor propio** | Lanza `llama-server` (llama.cpp) dentro de la app, solo en `127.0.0.1`, lo carga al abrir NOVA y lo deja cargado mientras está abierta. Mide la memoria de video libre y acomoda el contexto y las capas para no desbordarse a la memoria compartida (eso lo vuelve lentísimo). Recorta lo que manda para que siempre quepa. Cada respuesta deja su tiempo en `estado\tiempos.log`. En Windows vive en un Job Object: si NOVA se cierra, el motor muere con ella. |
 | **Personalidad** | Cálida, mexicana, directa y honesta de que es una IA. Editable en `personalidad.md`. |
 | **Conciencia de sí misma** | En cada respuesta sabe qué versión es, qué modelo usa, si hay internet, qué voz tiene y qué recuerda. Recuerda cuándo «nació». |
 | **Memoria de ti** | Quién eres, cómo hablas, gustos, proyectos, momentos y preferencias. Aprende por reglas al instante («me llamo…», «recuerda que…») y con el modelo cada 10 mensajes. «¿Qué sabes de mí?», «olvida lo de…», «esto no lo recuerdes» (modo privado). Nunca guarda contraseñas, claves, tarjetas ni códigos. |
@@ -24,6 +24,9 @@ NOVA es una asistente de inteligencia artificial que vive en tu computadora. Es 
 | **Voz** | Pulsar para hablar (Ctrl+Alt+Espacio): whisper.cpp para oír y Piper con voz es_MX para hablar, todo local. El orbe late con su voz. |
 | **Plática de a ratos** | Hasta 3 veces al día te habla por iniciativa (retoma tus proyectos, pregunta cómo te fue, sugiere un descanso). Nunca con pantalla completa, en llamada, con «No molestar» ni de 23:00 a 08:00. |
 | **Orbe** | Red de nodos y conexiones con anillos orbitales. Reposo (azul tenue), activa (azul brillante), procesando (dorado), buscando (verde), hablando (púrpura). Colores por contexto: azul general, cian tecnología, púrpura creatividad, dorado análisis, verde investigación, rojo prioridad, rosa apoyo. Se mueve libre por el escritorio y se aparta del cursor. |
+| **Cerebro grande** | Opcional: un modelo grande en la nube (Groq gratis, ver `oracle/CEREBRO-GRATIS.md`) para entender mejor. Con `cerebro_auto` lo usa siempre que hay internet; si falla o no hay red, contesta con el modelo local. |
+| **Tus archivos primero** | Si le preguntas por tus archivos, carpetas o proyectos, usa sus herramientas locales (y revisa la ruta que escribas) en vez de buscar en internet. |
+| **Libre en el escritorio** | El acceso «NOVA» abre el orbe flotando sobre tus ventanas, sin marco y dejando pasar los clics; «NOVA en ventana» la abre en su ventana. Para escribirle: clic en el orbe, Alt Gr+A (Ctrl+Alt+A) o clic en su icono junto al reloj. Alt Gr+Q (o Ctrl+Shift+Q) la esconde y la vuelve a sacar. Se queda quieta mientras piensa o habla, y el texto va sobre un vidrio oscuro para leerse con cualquier fondo. |
 | **Celular** | Conexión directa celular ↔ PC por el Wi-Fi de tu casa, sin nube. Emparejas con un código de 6 cifras. |
 
 ## Estructura
@@ -105,8 +108,8 @@ Lo que no se ha podido comprobar todavía, en orden de importancia:
 
 1. **Con un modelo real**: que un modelo de 3–4B siga bien el formato `ACCION:/FINAL:` y la velocidad en la RTX 3050.
 1. **La vista (0.2)**: que Qwen3-VL 4B con su proyector quepa en 4 GB (el proyector va en el procesador) y que siga las herramientas tan bien como el modelo de texto. Si no, `"vision": false` en `config.json` vuelve al modelo de texto y NOVA usa el OCR de Windows.
-1. **Captura y OCR en Windows (0.2)**: escritos con la API de Windows sin poder ejecutarlos aquí.
-2. **El envoltorio de escritorio en Windows**: el código pasa la revisión de tipos de Rust para Windows (`cargo check --target x86_64-pc-windows-msvc`), pero no se ha ejecutado. Falta ver la transparencia de la ventana, el paso de clics y los atajos.
+1. **Captura y OCR**: ya funcionan en Windows (lo confirman las pruebas en GitHub); falta verlos con tu pantalla real.
+2. **El orbe de escritorio en tu PC**: GitHub lo compila en Windows, pero la transparencia, el paso de clics, la barra y los atajos solo se ven en tu pantalla. Si algo falla, queda anotado en `%LOCALAPPDATA%\NOVA\estado\escritorio.log`.
 3. **Búsqueda en DuckDuckGo**: el lector de resultados está probado con HTML de ejemplo; si DuckDuckGo bloquea las consultas, usa una instancia de SearXNG (`internet_searxng_url`).
 4. **Voz**: los argumentos de `whisper-cli` y `piper` según las versiones que instales.
 5. **Celular**: que la red de tu casa permita la conexión y que el micrófono del celular funcione con el certificado propio.

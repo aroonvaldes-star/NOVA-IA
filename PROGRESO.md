@@ -1,6 +1,6 @@
 # NOVA: lo que llevamos
 
-Resumen al 27 de octubre de 2026. Versión actual: **0.2.1**.
+Resumen al 27 de octubre de 2026. Versión actual: **1.4.0**.
 
 ## 1. Qué es NOVA y qué decidimos
 
@@ -91,6 +91,24 @@ Me dijiste que tardaba mucho en contestar. Cambios:
 - Cada respuesta deja su tiempo en `%LOCALAPPDATA%\NOVA\estado\tiempos.log`, y el diagnóstico lo muestra.
 
 Para que entienda mejor, lo que más ayuda es el cerebro grande gratis de Groq (`oracle/CEREBRO-GRATIS.md`).
+
+### 1.4: todo junto (28 de octubre)
+
+Me pediste una sola actualización con todo lo que habías pedido, y que fuera la 1.4. Desde la 0.2.1 trae:
+
+- **Libre en el escritorio.** El acceso «NOVA» abre el orbe flotando sobre tus ventanas; «NOVA en ventana» la abre como antes. GitHub compila el orbe, así que no necesitas Rust.
+- **Escribirle es fácil.** Clic en el orbe, Alt Gr+A o clic en su icono junto al reloj abren una barrita abajo al centro que sí recibe el teclado. Se esconde al enviar o con Esc.
+- **Alt Gr+Q** (o Ctrl+Shift+Q) esconde el orbe y lo vuelve a sacar. Mientras NOVA está abierta, Alt Gr+Q no escribe @ (así lo elegiste).
+- **Quieta mientras habla o piensa** (antes se iba al centro).
+- **Contraste.** El texto va sobre un vidrio oscuro y el orbe trae un velo detrás, para verse sobre cualquier fondo.
+- **Tus archivos primero.** Si le preguntas por archivos, carpetas o proyectos, ya no se va a internet ni mete temas que no van. Si le das una ruta, la revisa antes de contestar.
+- **Error 400 arreglado.** Recorta lo que manda para que siempre quepa, en tu laptop y en Groq.
+- **Cerebro grande.** Se identifica bien con Groq, piensa rápido (gpt-oss en modo «low») y, si algo falla, el aviso dice exactamente qué pasó. El diagnóstico lo prueba.
+- **Configuración.** Lee `config.json` aunque el Bloc de notas lo haya guardado como `config.json.txt`, y avisa si tiene errores. Tu configuración nunca se sube a GitHub.
+- **Rutas de Windows.** Cuando el modelo escribe `C:\Users\...` con una sola diagonal, ya no se le rompe la acción.
+- **Skills** (del hilo de skills). Carpetas con `SKILL.md` en formato Agent Skills. Trae 4; «baja las skills de anthropic» instala 15 más de anthropics/skills (docx, pdf, pptx y xlsx no se pueden, por su licencia). «¿Qué skills tienes?» las lista.
+- **Actualizar sin zip.** `actualizar.bat` baja solo lo que cambió desde tu repositorio privado.
+- **Pruebas en Windows de verdad.** Cada cambio corre 263 pruebas en Linux y en Windows con GitHub Actions.
 
 ## 7. Dónde estamos
 

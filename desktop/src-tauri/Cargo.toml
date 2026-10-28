@@ -1,6 +1,6 @@
 [package]
 name = "nova-escritorio"
-version = "0.1.0"
+version = "1.4.0"
 description = "Envoltorio de escritorio de NOVA: el orbe flotante, la bandeja y los atajos globales"
 edition = "2021"
 
