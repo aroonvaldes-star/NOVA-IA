@@ -1,0 +1,43 @@
+# Prueba NOVA en Windows de verdad: las pruebas de Python y que los scripts de PowerShell se lean bien.
+name: Pruebas en Windows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Scripts de PowerShell (sin errores de sintaxis, solo ASCII)
+        shell: powershell
+        run: |
+          $mal = 0
+          foreach ($f in Get-ChildItem -Filter *.ps1) {
+            $errores = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$errores)
+            foreach ($e in $errores) { Write-Host "$($f.Name):$($e.Extent.StartLineNumber): $($e.Message)"; $mal++ }
+            if ([IO.File]::ReadAllBytes($f.FullName) | Where-Object { $_ -gt 127 }) { Write-Host "$($f.Name): tiene caracteres que no son ASCII"; $mal++ }
+          }
+          if ($mal) { exit 1 }
+          Write-Host 'Scripts bien.'
+      - name: Funciones del instalador (orbe de escritorio y accesos)
+        shell: powershell
+        run: |
+          . .\escritorio.ps1
+          $datos = Join-Path $env:RUNNER_TEMP 'NOVA'
+          New-Item -ItemType Directory -Force $datos | Out-Null
+          $exe = Obtener-Escritorio (Get-Location).Path $datos
+          Write-Host "Orbe de escritorio: $exe"
+          if (-not $exe) { Write-Host 'Sin la rama escritorio en este checkout (normal en pruebas)'; }
+          else { if ((Get-Item $exe).Length -lt 1000000) { throw 'El .exe bajado esta incompleto' } }
+      - name: Pruebas de Python
+        run: |
+          python -m pip install --disable-pip-version-check -q -e ".[completo]" pytest
+          python -m pytest -q
