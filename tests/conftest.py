@@ -12,7 +12,7 @@ def pytest_configure(config):
     # En Windows las carpetas temporales viven en AppData, que NOVA protege a propósito:
     # las pruebas usan una carpeta junto al proyecto, como cualquier carpeta tuya.
     if sys.platform == "win32" and not config.option.basetemp:
-        config.option.basetemp = str(Path(__file__).resolve().parent.parent / ".pruebas-tmp")
+        config.option.basetemp = str(Path(__file__).resolve().parent.parent / "pruebas-tmp")
 
 
 @pytest.fixture
