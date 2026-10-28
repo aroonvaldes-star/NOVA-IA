@@ -141,6 +141,19 @@ function Omni([string[]]$argumentos, $entrada = $null) {
     return @{ Codigo = $p.ExitCode; Salida = $salida.Result; Errores = $errores.Result }
 }
 
+function Omni-Api([string[]]$comando, $json) {
+    # Llama a su API de administracion (en esta PC basta la credencial local de su linea de comandos).
+    $cuerpo = Join-Path $Descargas 'omniroute-cuerpo.json'
+    [IO.File]::WriteAllText($cuerpo, $json, (New-Object Text.UTF8Encoding $false))
+    try { return Omni (@('api') + $comando + @('--body', "@$cuerpo")) } finally { Remove-Item $cuerpo -Force -ErrorAction SilentlyContinue }
+}
+
+function Sin-Ruido($r) {
+    $t = (($r.Salida + "`n" + $r.Errores) -split "`n") | Where-Object { $_.Trim() -and $_ -notmatch 'Loaded env from|is ignored' }
+    $t = ($t -join ' ').Trim()
+    return $t.Substring(0, [Math]::Min(400, $t.Length))
+}
+
 # ------------------------------------------------------------------ 1. Node
 
 Paso 'Node 24 (solo para OmniRoute)'
@@ -204,6 +217,8 @@ $env:DATA_DIR = $OmniDatos
 $env:OMNIROUTE_SERVER_HOST = '127.0.0.1'
 $env:PORT = "$Puerto"
 $env:OMNIROUTE_NO_UPDATE_NOTIFIER = '1'
+# Su linea de comandos usa "localhost" y en Windows eso puede ser ::1, donde OmniRoute no escucha.
+$env:OMNIROUTE_BASE_URL = "http://127.0.0.1:$Puerto"
 Remove-Item Env:HOSTNAME -ErrorAction SilentlyContinue
 
 $archivoEnv = Join-Path $OmniDatos '.env'
@@ -252,10 +267,7 @@ if (-not ($yaApuntaba -and $claveNova -and $envOmni['REQUIRE_API_KEY'] -eq 'true
     Guardar-Env $archivoEnv $envOmni
     Apagar-Omni
     Arrancar-Omni
-    $cuerpo = Join-Path $Descargas 'omniroute-clave.json'
-    [IO.File]::WriteAllText($cuerpo, '{"label":"NOVA","name":"NOVA"}', (New-Object Text.UTF8Encoding $false))
-    $r = Omni @('api', 'api-keys', 'post-api-keys', '--body', "@$cuerpo")
-    Remove-Item $cuerpo -Force
+    $r = Omni-Api @('api-keys', 'post-api-keys') '{"name":"NOVA"}'
     $claveNova = $null
     if ($r.Salida -match '"(?:key|apiKey|value|token)"\s*:\s*"([^"]{16,})"') { $claveNova = $Matches[1] }
     if ($claveNova) {
@@ -264,7 +276,7 @@ if (-not ($yaApuntaba -and $claveNova -and $envOmni['REQUIRE_API_KEY'] -eq 'true
         Bien 'Creada; OmniRoute ya no contesta a nadie sin ella'
     } else {
         Aviso 'No pude crear la clave automaticamente; OmniRoute queda abierto solo para esta PC.'
-        Aviso ("Respuesta: " + ($r.Salida + ' ' + $r.Errores).Trim().Substring(0, [Math]::Min(300, ($r.Salida + ' ' + $r.Errores).Trim().Length)))
+        Aviso ("Respuesta: " + (Sin-Ruido $r))
         $claveNova = ''
     }
     Apagar-Omni
@@ -278,7 +290,7 @@ Paso 'Proveedores'
 $endpointAntes = Valor 'cerebro_endpoint'
 if ($endpointAntes -match 'api\.groq\.com' -and (Valor 'cerebro_clave')) {
     $r = Omni @('keys', 'add', 'groq', '--stdin') (Valor 'cerebro_clave')
-    if ($r.Codigo -eq 0) { Bien 'Pase tu clave de Groq a OmniRoute' } else { Aviso "No pude pasar tu clave de Groq: $($r.Errores.Trim())" }
+    if ($r.Codigo -eq 0) { Bien 'Pase tu clave de Groq a OmniRoute' } else { Aviso "No pude pasar tu clave de Groq: $(Sin-Ruido $r)" }
 }
 if (-not $SinPreguntas) {
     Write-Host ''
@@ -292,7 +304,7 @@ if (-not $SinPreguntas) {
         if (-not $plano) { continue }
         $r = Omni @('keys', 'add', $prov, '--stdin') $plano
         $plano = $null
-        if ($r.Codigo -eq 0) { Bien "Agregue $prov" } else { Aviso "No pude agregar ${prov}: $(($r.Salida + ' ' + $r.Errores).Trim())" }
+        if ($r.Codigo -eq 0) { Bien "Agregue $prov" } else { Aviso "No pude agregar ${prov}: $(Sin-Ruido $r)" }
     }
 }
 $lista = Omni @('keys', 'list')
@@ -314,6 +326,15 @@ foreach ($par in @(
 Bien "Listo en $archivoNova (la anterior quedo en .antes-omniroute)"
 
 Arrancar-Omni
+
+# El modelo "auto" tambien usaria servicios sin clave (paginas de prueba, navegadores automaticos,
+# CLIs de otros). NOVA solo debe usar los proveedores a los que tu les diste clave oficial.
+Paso 'Solo tus proveedores'
+$sinClave = '["devin-cli-agentic","duckduckgo-web","cloudflare-playground","veoaifree-web","auggie","zcode","codex-app-server","uncloseai","aihorde"]'
+$r = Omni-Api @('settings', 'patch-api-settings') ('{"blockedProviders":' + $sinClave + ',"excludeTosAvoid":true}')
+if ($r.Codigo -eq 0 -and $r.Salida -notmatch '"error"') { Bien 'Nada de servicios sin clave ni de los que prohiben este uso' }
+else { Aviso "No pude ajustarlo: $(Sin-Ruido $r)" }
+
 $archivoPanel = Join-Path $OmniDatos 'contrasena-del-panel.txt'
 if ($nuevo) { [IO.File]::WriteAllText($archivoPanel, "Panel de OmniRoute: http://127.0.0.1:$Puerto`r`nContrasena inicial: $contrasenaPanel`r`n") }
 Write-Host ''

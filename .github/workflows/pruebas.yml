@@ -132,6 +132,7 @@ jobs:
           Write-Host "::notice::chat auto con clave de Groq falsa: $($chat.Codigo) $($t.Substring(0, [Math]::Min(300, $t.Length)))"
           # Con la clave falsa de Groq debe llegar hasta Groq (que la rechaza), no quedarse en OmniRoute.
           if ($chat.Texto -notmatch 'groq') { Falla 'El modelo auto no paso la peticion a Groq' }
+          if ($chat.Texto -match '(cfp|unc|ddgw|horde|aug|zc|cxa|dva|veo-free)/') { Falla 'El modelo auto uso un servicio sin clave' }
           if ($mal) { exit 1 }
       - name: NOVA lo vuelve a prender sola
         shell: pwsh
