@@ -28,7 +28,7 @@ DEFECTO: dict[str, Any] = {
     "vision_max_tokens": 1024,
     "pantalla_max_ancho": 1280,
     "gpu_layers": 99,
-    "server_idle_seconds": 600,
+    "server_idle_seconds": 0,  # 0: el modelo queda cargado mientras NOVA está abierta (si no, tarda en volver)
     "motor": "auto",  # auto | llama | simulado
     # Cerebro grande: un llama-server en otro equipo (Oracle Cloud por Tailscale). Solo con «piénsalo bien: …»
     "cerebro_endpoint": "",
@@ -53,7 +53,7 @@ DEFECTO: dict[str, Any] = {
     "internet_searxng_url": "",
     "internet_max_paginas": 5,
     "internet_max_kb_pagina": 300,
-    "internet_timeout": 15,
+    "internet_timeout": 8,
     "internet_leer_paginas": 2,  # además de los resultados, lee las primeras páginas para responder con detalle
     # Tus archivos: carpetas que NOVA conoce (además de las que le pidas con «conoce la carpeta …»)
     "carpetas": ["~/Documents", "~/Desktop"],

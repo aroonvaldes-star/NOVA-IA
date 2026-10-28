@@ -1,6 +1,6 @@
 # NOVA: lo que llevamos
 
-Resumen al 27 de octubre de 2026. Versión actual: **0.2.0**.
+Resumen al 27 de octubre de 2026. Versión actual: **0.2.1**.
 
 ## 1. Qué es NOVA y qué decidimos
 
@@ -78,6 +78,19 @@ La 0.1.1 ya se instaló y abrió en tu PC. Me dijiste que los recuadros estorbab
 - **Ve tu pantalla.** «Mira mi pantalla» o «¿qué ves?»: esconde su ventana un instante, toma la captura y la mira con un modelo con vista (Qwen3-VL 4B, lo baja el instalador) o lee el texto con el OCR de Windows. Además siempre sabe en qué ventana estás (por ejemplo, el archivo abierto en VS Code). Lo que ve en tu pantalla no sale a internet sin tu clic.
 - **Conoce tus archivos.** Lee Documentos y Escritorio, y las carpetas que le pidas: «conoce la carpeta N:\NOVORA_WORKSPACE». Lee texto, código y Word (no binarios ni node_modules, bin, obj…), se actualiza cada 30 minutos, usa lo relevante para contestar y encuentra archivos por nombre.
 - **Más memoria de conversación.** El contexto sube a 8192 con la caché en 8 bits, para que quepa en tus 4 GB de video.
+
+### 0.2.1: más rápida (28 de octubre)
+
+Me dijiste que tardaba mucho en contestar. Cambios:
+
+- El modelo se queda cargado mientras NOVA está abierta (antes se apagaba a los 10 minutos y tardaba en volver), y se carga al abrir NOVA, no con tu primer mensaje.
+- Antes de arrancar mide la memoria de video libre. Si el modelo no cabe completo, acorta el contexto o deja algunas capas en el procesador, en vez de que Windows lo mande a la memoria normal (eso lo vuelve lentísimo).
+- El inicio del prompt (personalidad y herramientas) ya no cambia entre mensajes, así que el motor lo reutiliza en vez de releerlo cada vez.
+- Lo que aprende de ti en segundo plano espera a que dejes de escribir, para no hacerte esperar.
+- Las páginas web tardan máximo 8 segundos en vez de 15.
+- Cada respuesta deja su tiempo en `%LOCALAPPDATA%\NOVA\estado\tiempos.log`, y el diagnóstico lo muestra.
+
+Para que entienda mejor, lo que más ayuda es el cerebro grande gratis de Groq (`oracle/CEREBRO-GRATIS.md`).
 
 ## 7. Dónde estamos
 

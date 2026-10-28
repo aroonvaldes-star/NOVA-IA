@@ -16,6 +16,7 @@ import json
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import threading
@@ -33,6 +34,7 @@ AlToken = Callable[[str], None]
 class Motor:
     nombre = "base"
     modelo = ""
+    metricas: dict = {}
 
     def disponible(self) -> bool:
         return True
@@ -42,6 +44,9 @@ class Motor:
         raise NotImplementedError
 
     def detener(self) -> None:
+        pass
+
+    def precalentar(self, sistema: str = "") -> None:
         pass
 
 
@@ -142,6 +147,8 @@ class MotorLlama(Motor):
         self._ultimo_uso = time.monotonic()
         self._cerrojo = threading.Lock()
         self._vigilante: threading.Thread | None = None
+        self.metricas: dict = {}  # tiempos de la última respuesta (los manda llama-server)
+        self.ajuste = ""  # cómo acomodó el modelo en la memoria de video
 
     def disponible(self) -> bool:
         if self._responde():
@@ -177,9 +184,11 @@ class MotorLlama(Motor):
 
     def _argumentos(self) -> tuple[list[str], list[str]]:
         puerto = self.endpoint.rsplit(":", 1)[-1]
+        contexto, capas = self._acomodar()
         base = [
             str(self.binario), "-m", str(self.ruta_modelo), "--host", "127.0.0.1", "--port", puerto,
-            "-c", str(self.config.context), "-ngl", str(self.config.gpu_layers), "--alias", "nova",
+            "-c", str(contexto), "-ngl", str(capas), "--alias", "nova",
+            "-np", "1",  # una sola plática a la vez: toda la memoria para ella
         ]
         extras: list[str] = []
         if self.config.kv_cache:
@@ -191,9 +200,38 @@ class MotorLlama(Motor):
                 extras.append("--no-mmproj-offload")
         return base, extras
 
+    def _acomodar(self) -> tuple[int, int]:
+        """Contexto y capas en GPU que caben en la memoria de video libre.
+
+        Si el modelo no cabe completo, Windows lo pasa en silencio a la memoria normal y
+        cada palabra tarda muchísimo. Mejor un contexto más corto, o dejar algunas capas
+        en el procesador, que es mucho más rápido que eso.
+        """
+        contexto, capas = int(self.config.context), int(self.config.gpu_layers)
+        libre = vram_libre_mb()
+        if libre is None or capas <= 0 or not self.ruta_modelo:
+            self.ajuste = ""
+            return contexto, capas
+        try:
+            modelo_mb = self.ruta_modelo.stat().st_size / 2**20
+        except OSError:
+            return contexto, capas
+        por_token = 0.08 if self.config.kv_cache else 0.15  # MB por token de contexto en un modelo 4B
+        margen = 700  # búferes de cálculo de CUDA y lo que pide Windows mientras tanto
+        while contexto > 4096 and modelo_mb + contexto * por_token + margen > libre:
+            contexto //= 2
+        sobra = libre - contexto * por_token - margen
+        if sobra < modelo_mb:
+            total = capas_del_modelo(self.ruta_modelo) or 36
+            capas = max(0, min(capas, int(total * sobra / modelo_mb)))
+        self.ajuste = (f"{libre:.0f} MB libres de video: contexto {contexto}, "
+                       + ("modelo completo en la GPU" if capas >= (capas_del_modelo(self.ruta_modelo) or 36) else f"{capas} capas en la GPU"))
+        return contexto, capas
+
     def _arrancar(self, args: list[str]) -> bool:
         log = open(self.config.rutas.estado / "llama-server.log", "ab")
-        log.write(("\n--- " + time.strftime("%Y-%m-%d %H:%M:%S") + " " + " ".join(args[1:]) + "\n").encode())
+        log.write(("\n--- " + time.strftime("%Y-%m-%d %H:%M:%S") + " " + " ".join(args[1:]) + "\n"
+                   + (f"--- {self.ajuste}\n" if self.ajuste else "")).encode())
         log.flush()
         self._proceso = subprocess.Popen(
             args, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
@@ -218,7 +256,8 @@ class MotorLlama(Motor):
     def _vigilar(self) -> None:
         while self._proceso and self._proceso.poll() is None:
             time.sleep(15)
-            if time.monotonic() - self._ultimo_uso > self.config.server_idle_seconds:
+            espera = float(self.config.server_idle_seconds)
+            if espera > 0 and time.monotonic() - self._ultimo_uso > espera:
                 self.detener()
                 return
 
@@ -236,8 +275,10 @@ class MotorLlama(Motor):
         self.asegurar()
         cuerpo = json.dumps({
             "model": self._nombre_api(), "messages": mensajes, "stream": True,
-            "temperature": temperatura, "max_tokens": max_tokens,
+            "temperature": temperatura, "max_tokens": max_tokens, **self._extras_peticion(),
         }).encode()
+        inicio, primero = time.monotonic(), None
+        self.metricas = {}
         peticion = urllib.request.Request(self._url_chat(), data=cuerpo,
                                           headers={"Content-Type": "application/json", **self._cabeceras()})
         texto = []
@@ -250,15 +291,30 @@ class MotorLlama(Motor):
                 if dato == "[DONE]":
                     break
                 try:
-                    delta = json.loads(dato)["choices"][0]["delta"].get("content") or ""
-                except (ValueError, KeyError, IndexError):
+                    trozo = json.loads(dato)
+                    if trozo.get("timings"):
+                        self.metricas = dict(trozo["timings"])
+                    delta = (trozo.get("choices") or [{}])[0].get("delta", {}).get("content") or ""
+                except (ValueError, KeyError, IndexError, AttributeError):
                     continue
                 if delta:
+                    primero = primero or time.monotonic()
                     texto.append(delta)
                     if al_token:
                         al_token(delta)
                 self._ultimo_uso = time.monotonic()
+        self.metricas.update(segundos=round(time.monotonic() - inicio, 2),
+                             primera_palabra=round((primero or time.monotonic()) - inicio, 2))
         return "".join(texto)
+
+    def _extras_peticion(self) -> dict:
+        # llama-server reutiliza lo ya leído del inicio del prompt (personalidad, herramientas).
+        return {"cache_prompt": True}
+
+    def precalentar(self, sistema: str = "") -> None:
+        """Carga el modelo en la GPU y deja leído el inicio del prompt, para que la primera respuesta no espere."""
+        mensajes = [{"role": "system", "content": sistema or "Eres NOVA."}, {"role": "user", "content": "hola"}]
+        self.chat(mensajes, max_tokens=1, temperatura=0)
 
     def _cabeceras(self) -> dict:
         return {}
@@ -298,6 +354,8 @@ class MotorRemoto(MotorLlama):
         self.modelo = config.cerebro_modelo or "remoto"
         self.mmproj = None
         self.vision = False
+        self.metricas = {}
+        self.ajuste = ""
         self._proceso = None
         self._trabajo = None
         self._ultimo_uso = time.monotonic()
@@ -309,6 +367,12 @@ class MotorRemoto(MotorLlama):
 
     def _nombre_api(self) -> str:
         return self.config.cerebro_api_modelo or "nova-cerebro"
+
+    def _extras_peticion(self) -> dict:
+        return {}  # los servicios en la nube rechazan campos que no conocen
+
+    def precalentar(self, sistema: str = "") -> None:
+        pass  # en la nube ya está cargado; no gastes peticiones
 
     def _responde(self) -> bool:
         if self.endpoint.endswith("/v1"):
@@ -329,6 +393,61 @@ class MotorRemoto(MotorLlama):
 
     def detener(self) -> None:
         pass
+
+
+def vram_libre_mb() -> float | None:
+    """Memoria de video libre en la GPU NVIDIA, en MB (None si no hay nvidia-smi)."""
+    smi = shutil.which("nvidia-smi")
+    if not smi:
+        return None
+    try:
+        p = subprocess.run([smi, "--query-gpu=memory.free", "--format=csv,noheader,nounits"], capture_output=True,
+                           text=True, timeout=10, creationflags=0x08000000 if sys.platform == "win32" else 0)
+        return float(p.stdout.strip().splitlines()[0]) if p.returncode == 0 and p.stdout.strip() else None
+    except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
+        return None
+
+
+def capas_del_modelo(ruta: Path) -> int | None:
+    """Cuántas capas tiene un GGUF (clave «<arquitectura>.block_count» de su cabecera)."""
+    try:
+        with open(ruta, "rb") as f:
+            if f.read(4) != b"GGUF":
+                return None
+            version, _tensores, claves = struct.unpack("<IQQ", f.read(20))
+            if version < 2:
+                return None
+            for _ in range(min(claves, 200)):
+                (n,) = struct.unpack("<Q", f.read(8))
+                clave = f.read(n).decode("utf-8", "replace")
+                (tipo,) = struct.unpack("<I", f.read(4))
+                valor = _leer_valor_gguf(f, tipo)
+                if clave.endswith(".block_count"):
+                    return int(valor)
+    except (OSError, struct.error, ValueError):
+        return None
+    return None
+
+
+_GGUF_FIJOS = {0: "<B", 1: "<b", 2: "<H", 3: "<h", 4: "<I", 5: "<i", 6: "<f", 7: "<?", 10: "<Q", 11: "<q", 12: "<d"}
+
+
+def _leer_valor_gguf(f, tipo: int):
+    if tipo in _GGUF_FIJOS:
+        formato = _GGUF_FIJOS[tipo]
+        return struct.unpack(formato, f.read(struct.calcsize(formato)))[0]
+    if tipo == 8:  # texto
+        (n,) = struct.unpack("<Q", f.read(8))
+        return f.read(n)
+    if tipo == 9:  # lista: tipo, cuántos, valores
+        sub, n = struct.unpack("<IQ", f.read(12))
+        if sub in _GGUF_FIJOS:
+            f.seek(struct.calcsize(_GGUF_FIJOS[sub]) * n, 1)
+        else:
+            for _ in range(n):
+                _leer_valor_gguf(f, sub)
+        return None
+    raise ValueError(f"tipo GGUF desconocido {tipo}")
 
 
 def buscar_binario(config: Config) -> Path | None:

@@ -123,11 +123,14 @@ def diagnosticar(config: Config | None = None, rapido: bool = False) -> Reporte:
             t0 = time.monotonic()
             motor.asegurar()
             r(BIEN, f"El motor arrancó en {time.monotonic() - t0:.1f} s")
+            if motor.ajuste:
+                r(BIEN if "completo" in motor.ajuste else AVISO, "Memoria de video: " + motor.ajuste,
+                  "" if "completo" in motor.ajuste else "No cabe completo en la GPU: cierra juegos o programas que usen la gráfica y vuelve a abrir NOVA.")
             t0 = time.monotonic()
             texto = motor.chat([{"role": "system", "content": "Responde en español, en una sola línea, empezando con FINAL:"},
                                 {"role": "user", "content": "Preséntate en una frase."}], max_tokens=80, temperatura=0.2)
             dur = time.monotonic() - t0
-            vel = max(len(texto) / 4, 1) / max(dur, 0.01)
+            vel = motor.metricas.get("predicted_per_second") or max(len(texto) / 4, 1) / max(dur, 0.01)
             r(BIEN if vel >= 8 else AVISO, f"Primera respuesta en {dur:.1f} s (unos {vel:.0f} tokens/s)",
               "" if vel >= 8 else "Va lento: revisa que use la GPU (versión CUDA) o baja «context» en config.json.")
             r(BIEN if texto.strip().upper().startswith("FINAL") else AVISO, "Formato: " + texto.strip()[:120].replace("\n", " "),
@@ -148,6 +151,12 @@ def diagnosticar(config: Config | None = None, rapido: bool = False) -> Reporte:
             r(MAL, f"El motor falló: {exc}", f"Revisa {config.rutas.estado / 'llama-server.log'}")
         finally:
             motor.detener()
+
+    tiempos = config.rutas.estado / "tiempos.log"
+    if tiempos.is_file():
+        r.titulo("Últimas respuestas (cuánto tardaron)")
+        for linea in tiempos.read_text(encoding="utf-8", errors="replace").splitlines()[-8:]:
+            r(BIEN, linea)
 
     r.titulo("Internet")
     from .internet import Internet

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nova"
-version = "0.2.0"
+version = "0.2.1"
 description = "NOVA: asistente de escritorio local, con memoria, voz e internet como herramienta"
 readme = "README.md"
 requires-python = ">=3.11"

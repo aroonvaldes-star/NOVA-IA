@@ -117,6 +117,8 @@ class Nova:
         self.inicio_sesion_trabajo = time.monotonic()
         self._cerrojo = threading.Lock()
         self._detener = threading.Event()
+        self._inicio_turno: float | None = None  # para anotar cuánto tarda cada respuesta
+        self._llamadas: list[dict] | None = None
         if not self.memoria.recuerdos("nova", 1):
             self.memoria.recordar("nova", f"Nací el {dt.date.today().isoformat()} como NOVA {__version__}.", "nova")
 
@@ -150,6 +152,7 @@ class Nova:
                 platica.respuesta(self.platica, siguio=True)
             ctx = personalidad.contexto(texto)
             self._estado("activa", ctx)
+            self._inicio_turno, self._llamadas = time.monotonic(), []
             try:
                 self.herramientas.nueva_tarea(texto)
                 rapida = orden_rapida(texto)
@@ -164,6 +167,7 @@ class Nova:
             return respuesta
 
     def _cerrar_turno(self, texto: str, respuesta: str, por_voz: bool) -> None:
+        self._anotar_tiempos()
         self.historial += [{"role": "user", "content": texto}, {"role": "assistant", "content": respuesta}]
         self.historial = self.historial[-16:]
         self.memoria.anotar_mensaje(self.sesion, "usuario", texto)
@@ -175,7 +179,34 @@ class Nova:
             self.mensajes_sin_extraer.append(texto)
             if len(self.mensajes_sin_extraer) >= 10 and not isinstance(self.motor, MotorSimulado):
                 pendientes, self.mensajes_sin_extraer = self.mensajes_sin_extraer, []
-                threading.Thread(target=aprendizaje.extraer_con_modelo, args=(self.motor, self.memoria, pendientes), daemon=True).start()
+                threading.Thread(target=self._aprender_en_pausa, args=(pendientes,), daemon=True).start()
+
+    def _aprender_en_pausa(self, pendientes: list[str]) -> None:
+        # El modelo atiende una cosa a la vez: aprende solo cuando dejas de escribir, para no hacerte esperar.
+        while _inactivo_min(self.ultima_actividad) < 1.5:
+            if self._detener.wait(20):
+                return
+        aprendizaje.extraer_con_modelo(self.motor, self.memoria, pendientes)
+
+    def _anotar_tiempos(self) -> None:
+        """Deja en estado/tiempos.log cuánto tardó cada respuesta, para saber qué la frena."""
+        if self._inicio_turno is None:
+            return
+        total = time.monotonic() - self._inicio_turno
+        partes = []
+        for m in self._llamadas:
+            p = f"{m.get('motor', '?')}: {m.get('segundos', 0):.1f}s"
+            if m.get("prompt_n") is not None:
+                p += (f" (leyó {m['prompt_n']} tokens en {m.get('prompt_ms', 0) / 1000:.1f}s, "
+                      f"escribió {m.get('predicted_n', 0)} a {m.get('predicted_per_second', 0):.0f}/s)")
+            partes.append(p)
+        linea = f"{dt.datetime.now():%Y-%m-%d %H:%M:%S} total {total:.1f}s; " + ("; ".join(partes) or "sin modelo") + "\n"
+        self._inicio_turno = None
+        try:
+            with open(self.config.rutas.estado / "tiempos.log", "a", encoding="utf-8") as f:
+                f.write(linea)
+        except OSError:
+            pass
 
     def conversacion(self, limite: int = 40) -> list[dict]:
         """Los últimos mensajes, para que la interfaz los muestre al abrir."""
@@ -284,6 +315,8 @@ class Nova:
         for _ in range(int(self.config.agente_max_pasos)):
             self._estado("procesando", ctx)
             salida = sin_pensamientos(motor.chat(mensajes, al_token=self._emisor()))
+            if self._llamadas is not None:
+                self._llamadas.append({"motor": "nube" if motor is self.cerebro else "local", **(getattr(motor, "metricas", None) or {})})
             m = ACCION.match(salida)
             if m:
                 try:
@@ -549,6 +582,16 @@ class Nova:
 
     def arrancar_fondo(self) -> None:
         self.observador.arrancar()
+
+        def precalentar():
+            # Carga el modelo y lee de una vez la personalidad y las herramientas: la primera respuesta ya no espera.
+            if self.cerebro and self.config.cerebro_auto:
+                return
+            try:
+                self.motor.precalentar(personalidad.prompt_sistema(self.personalidad, "", "", ""))
+            except Exception:  # noqa: BLE001 - si falla, arrancará con el primer mensaje
+                pass
+        threading.Thread(target=precalentar, daemon=True, name="nova-precalentar").start()
 
         def indexador():
             # Revisa tus carpetas al abrir y luego cada cierto tiempo (solo relee lo que cambió).
