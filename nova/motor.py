@@ -26,6 +26,7 @@ import urllib.request
 from pathlib import Path
 from typing import Callable, Iterable
 
+from . import __version__
 from .config import Config
 
 AlToken = Callable[[str], None]
@@ -279,10 +280,16 @@ class MotorLlama(Motor):
         }).encode()
         inicio, primero = time.monotonic(), None
         self.metricas = {}
+        # Con el agente de Python por defecto, algunos servicios en la nube (tras Cloudflare) responden 403.
         peticion = urllib.request.Request(self._url_chat(), data=cuerpo,
-                                          headers={"Content-Type": "application/json", **self._cabeceras()})
+                                          headers={"Content-Type": "application/json", "User-Agent": f"NOVA/{__version__}",
+                                                   **self._cabeceras()})
         texto = []
-        with urllib.request.urlopen(peticion, timeout=600) as r:
+        try:
+            r = urllib.request.urlopen(peticion, timeout=600)
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(_explicar_http(exc)) from exc
+        with r:
             for linea in r:
                 linea = linea.decode("utf-8", "replace").strip()
                 if not linea.startswith("data:"):
@@ -396,6 +403,20 @@ class MotorRemoto(MotorLlama):
 
     def detener(self) -> None:
         pass
+
+
+def _explicar_http(exc: urllib.error.HTTPError) -> str:
+    """El error del servicio, con lo que dice su respuesta (nunca la clave, que no viene ahí)."""
+    try:
+        detalle = exc.read(600).decode("utf-8", "replace")
+        detalle = json.loads(detalle).get("error", detalle) if detalle.lstrip().startswith("{") else detalle
+        if isinstance(detalle, dict):
+            detalle = detalle.get("message") or json.dumps(detalle, ensure_ascii=False)
+    except (OSError, ValueError, AttributeError):
+        detalle = ""
+    pista = {401: "la clave no es válida", 403: "el servicio rechazó la conexión", 404: "no existe ese modelo o esa dirección",
+             429: "se acabó el límite gratis por ahora"}.get(exc.code, "")
+    return f"error {exc.code}" + (f", {pista}" if pista else "") + (f": {str(detalle).strip()[:300]}" if detalle else "")
 
 
 def vram_libre_mb() -> float | None:
