@@ -51,7 +51,7 @@ def test_catalogo_corto(tmp_path):
     for i in range(30):
         nueva(tmp_path, f"skill-{i:02d}", "Una descripción bastante larga " * 10)
     catalogo = Skills([tmp_path]).catalogo(max_chars=600)
-    assert len(catalogo) < 800 and "hay más" in catalogo
+    assert len(catalogo) < 1000 and "Otras" in catalogo and "skill-29" in catalogo
 
 
 def test_archivos_de_la_skill_sin_salirse(tmp_path):
@@ -105,3 +105,46 @@ def test_no_se_activa_con_una_palabra_suelta():
     s = Skills([Path(__file__).resolve().parent.parent / "skills"])
     assert s.elegir("revisa mi correo") is None
     assert s.elegir("tengo un error al compilar la app").nombre == "explicar-error"
+
+
+def _zip_falso(ruta: Path) -> str:
+    import zipfile
+
+    apache = "Apache License\nVersion 2.0"
+    with zipfile.ZipFile(ruta, "w") as z:
+        z.writestr("skills-main/README.md", "x")
+        z.writestr("skills-main/skills/mcp-builder/SKILL.md", "---\nname: mcp-builder\ndescription: Build MCP servers.\n---\nSteps.")
+        z.writestr("skills-main/skills/mcp-builder/LICENSE.txt", apache)
+        z.writestr("skills-main/skills/mcp-builder/reference/guia.md", "guía")
+        z.writestr("skills-main/skills/docx/SKILL.md", "---\nname: docx\ndescription: Word.\nlicense: Proprietary. LICENSE.txt\n---\n")
+        z.writestr("skills-main/skills/docx/LICENSE.txt", "All rights reserved. users may not")
+        z.writestr("skills-main/skills/mcp-builder/../../../fuera.txt", "malo")
+    return ruta.as_uri()
+
+
+def test_bajar_skills_de_anthropic(tmp_path):
+    from nova.skills import bajar_anthropic
+
+    destino = tmp_path / "skills-anthropic"
+    (destino / "vieja").mkdir(parents=True)
+    r = bajar_anthropic(destino, url=_zip_falso(tmp_path / "skills.zip"))
+    assert r["instaladas"] == ["mcp-builder"] and "docx" in r["omitidas"]
+    assert not (destino / "vieja").exists() and not (tmp_path / "fuera.txt").exists()
+    s = Skills([destino])
+    assert s.todas()["mcp-builder"].descripcion.startswith("Crear servidores MCP")  # descripción en español
+    assert "reference/guia.md" in s.leer("mcp-builder")
+    assert s.elegir("quiero crear un servidor mcp en python").nombre == "mcp-builder"
+
+
+def test_catalogo_nombra_las_que_no_caben(tmp_path):
+    for i in range(10):
+        nueva(tmp_path, f"skill-{i}", "Descripción " * 8)
+    catalogo = Skills([tmp_path]).catalogo(max_chars=300)
+    assert "Otras (ábrelas con usar_skill): " in catalogo and "skill-9" in catalogo
+
+
+def test_orden_bajar_skills():
+    from nova.voz import orden_rapida
+
+    assert orden_rapida("baja las skills de anthropic").accion == "bajar_skills"
+    assert orden_rapida("instala todas las skills de agent skills").accion == "bajar_skills"

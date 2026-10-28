@@ -256,6 +256,19 @@ def cmd_skills(a) -> int:
     config = cargar()
     skills = Skills.desde_config(config)
     skills.preparar()
+    if a.nombre == "bajar":
+        from .skills import bajar_anthropic, descargadas
+
+        print("Bajando las skills de github.com/anthropics/skills…")
+        try:
+            r = bajar_anthropic(descargadas(config))
+        except (OSError, ValueError) as exc:
+            print(f"No pude bajarlas: {exc}", file=sys.stderr)
+            return 1
+        print(f"Instalé {len(r['instaladas'])} en {r['carpeta']}: {', '.join(r['instaladas'])}")
+        for nombre, motivo in r["omitidas"].items():
+            print(f"  No instalé {nombre}: {motivo}")
+        return 0
     if a.nombre:
         print(skills.leer(a.nombre, max_chars=100_000))
         return 0
@@ -336,7 +349,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--rapido", action="store_true", help="sin probar el modelo ni la voz")
     s.set_defaults(f=cmd_diagnostico)
     s = sub.add_parser("skills", help="las skills que tiene NOVA (carpetas con SKILL.md)")
-    s.add_argument("nombre", nargs="?", default="", help="muestra una skill completa")
+    s.add_argument("nombre", nargs="?", default="", help="muestra una skill completa, o «bajar» para traer las de anthropics/skills")
     s.set_defaults(f=cmd_skills)
     s = sub.add_parser("nota")
     s.add_argument("texto", nargs="+")

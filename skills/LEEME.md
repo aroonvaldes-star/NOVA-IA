@@ -32,6 +32,19 @@ description: Qué hace y cuándo usarla, con las palabras que tú dirías al ped
 NOVA las ve sin reiniciar. Dile «qué skills tienes» para ver la lista, o «usa la skill nombre …» para pedir una.
 Si tu mensaje se parece mucho a la descripción de una skill, NOVA la usa sola.
 
+## Las skills de Anthropic (github.com/anthropics/skills)
+
+Dile a NOVA **«baja las skills de anthropic»** (o en la terminal `nova skills bajar`). Las guarda en
+`%LOCALAPPDATA%\NOVA\skills-anthropic`, cada una con una descripción en español para que NOVA las
+elija bien. Para tener la versión más nueva, pídeselo otra vez: reemplaza esa carpeta.
+
+- **No se instalan** `docx`, `pdf`, `pptx` y `xlsx`: su licencia solo permite usarlas dentro de los
+  servicios de Anthropic, no con otro modelo.
+- Están en inglés y varias son largas: NOVA lee los primeros 2,500 caracteres y abre lo demás si lo necesita.
+- Algunas traen scripts de Python que piden paquetes (por ejemplo Playwright en `webapp-testing`).
+  NOVA nunca los corre sola; te propone la orden y tú confirmas.
+- Algunas están pensadas para Claude (`claude-api`, `academy-guide`); con el modelo local sirven de referencia.
+
 ## Consejos para el modelo local
 
 El modelo de tu laptop es chico, así que:

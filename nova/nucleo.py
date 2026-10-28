@@ -498,6 +498,8 @@ class Nova:
                     if args["activo"] else "Salí del modo privado; vuelvo a recordar.")
         if a == "estado":
             return self.presentarme()
+        if a == "bajar_skills":
+            return self.bajar_skills()
         if a == "skills":
             return self.skills.resumen() if self.skills else "Tengo las skills desactivadas (\"skills\": false en config.json)."
         if a == "confirmar":
@@ -505,6 +507,30 @@ class Nova:
         if a == "celular":
             return self.conectar_celular() if args["activo"] else f"Desconecté {self.memoria.quitar_dispositivos()} dispositivo(s)."
         return None
+
+    def bajar_skills(self) -> str:
+        """Baja las skills de anthropics/skills en segundo plano y avisa al terminar (lo pide el usuario, no el modelo)."""
+        if not self.skills:
+            return "Tengo las skills desactivadas (\"skills\": false en config.json)."
+        if not self.internet.activo:
+            return "Estoy sin internet; dime «conéctate» y luego vuelve a pedírmelo."
+
+        def bajar():
+            from .skills import bajar_anthropic, descargadas
+
+            try:
+                r = bajar_anthropic(descargadas(self.config))
+            except (OSError, ValueError) as exc:
+                self.bus.publicar({"tipo": "aviso", "texto": f"No pude bajar las skills: {exc}"})
+                return
+            texto = f"Listo, instalé {len(r['instaladas'])} skills de Anthropic: {', '.join(r['instaladas'])}."
+            if r["omitidas"]:
+                texto += (f" No instalé {', '.join(r['omitidas'])}: su licencia solo permite usarlas dentro de los "
+                          "servicios de Anthropic, no con otro modelo.")
+            self.bus.publicar({"tipo": "aviso", "texto": texto})
+
+        threading.Thread(target=bajar, daemon=True).start()
+        return "Voy por las skills de github.com/anthropics/skills; te aviso cuando queden."
 
     def confirmar(self, codigo: str, por_voz: bool = False) -> dict:
         self._estado("procesando")

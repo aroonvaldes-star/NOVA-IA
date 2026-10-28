@@ -8,8 +8,12 @@ Cada skill es una carpeta con un SKILL.md:
 
 NOVA las busca en, de menor a mayor prioridad (si dos se llaman igual, gana la última):
   1. la carpeta skills/ de NOVA (las que vienen incluidas; puedes poner las tuyas ahí también),
-  2. la carpeta de configuración: %APPDATA%\\NOVA\\skills,
-  3. las carpetas de skills_carpetas en config.json (por defecto ~/.claude/skills).
+  2. %LOCALAPPDATA%\\NOVA\\skills-anthropic (las de github.com/anthropics/skills, con «nova skills bajar»),
+  3. la carpeta de configuración: %APPDATA%\\NOVA\\skills,
+  4. las carpetas de skills_carpetas en config.json (por defecto ~/.claude/skills).
+
+Si junto al SKILL.md hay un descripcion-es.txt, NOVA usa esa descripción: así una skill en inglés
+se elige bien cuando le hablas en español.
 
 Para que el modelo chico no se llene, se carga poco a poco, como en Agent Skills:
 en el prompt solo va el catálogo (nombre y descripción corta); el cuerpo de una
@@ -23,14 +27,38 @@ por la herramienta orden y su confirmación).
 
 from __future__ import annotations
 
+import io
 import os
 import re
+import shutil
 import unicodedata
+import urllib.request
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
 INCLUIDAS = Path(__file__).resolve().parent.parent / "skills"
 MAX_SKILL_MD = 64_000
+DESCRIPCION_ES = "descripcion-es.txt"
+ANTHROPIC_ZIP = "https://codeload.github.com/anthropics/skills/zip/refs/heads/main"
+# Descripciones en español para las skills de anthropics/skills: el modelo local elige mejor con ellas.
+DESCRIPCIONES_ANTHROPIC = {
+    "academy-guide": "Recomendar cursos y tutoriales de Claude Academy cuando preguntan cómo aprender a usar Claude.",
+    "algorithmic-art": "Crear arte generativo con código (p5.js): patrones, partículas, fractales y animaciones.",
+    "brand-guidelines": "Aplicar los colores y la tipografía de la marca Anthropic a un documento o página.",
+    "canvas-design": "Diseñar pósters, portadas, ilustraciones o imágenes estáticas en PNG o PDF.",
+    "claude-api": "Programar apps que usan la API de Claude (Anthropic SDK): modelos, herramientas, streaming, caché.",
+    "discernment-nudge": "Después de un consejo, plan o análisis importante, sugerir qué revisar antes de actuar.",
+    "doc-coauthoring": "Escribir juntos documentación, propuestas, especificaciones técnicas o documentos de decisión.",
+    "frontend-design": "Diseño visual de interfaces, páginas web y apps: estilo, tipografía, colores, que no se vea genérico.",
+    "internal-comms": "Redactar comunicados internos: reportes de avance, actualizaciones, boletines, FAQ, reportes de incidentes.",
+    "mcp-builder": "Crear servidores MCP (Model Context Protocol) en Python o TypeScript para conectar una IA con APIs.",
+    "skill-creator": "Crear, mejorar y evaluar skills (guía completa en inglés, con pruebas y scripts).",
+    "slack-gif-creator": "Crear GIFs animados para Slack con Python.",
+    "theme-factory": "Aplicar un tema de colores y tipografías a presentaciones, documentos o páginas HTML.",
+    "web-artifacts-builder": "Hacer páginas web complejas con React, Tailwind y shadcn/ui.",
+    "webapp-testing": "Probar una aplicación web local con Playwright: revisar pantallas, errores y capturas.",
+}
 NOMBRE_VALIDO = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 # «usa la skill revisar-codigo …», «con la habilidad X», o empezar con «/revisar-codigo».
 PIDE_SKILL = re.compile(r"(?:^\s*/([\w-]+))|(?:\b(?:usa|usando|con|aplica|sigue)\s+(?:la\s+|tu\s+)?(?:skill|habilidad)\s+[«\"']?([\w-]+))", re.I)
@@ -107,22 +135,23 @@ def _raices(texto: str, minimo: int = 4) -> set[str]:
 
 
 class Skills:
-    def __init__(self, carpetas: list[Path]):
+    def __init__(self, carpetas: list[Path], al_final: list[Path] | None = None):
         self.carpetas = carpetas
+        self.al_final = set(al_final or [])  # sus skills van al final del catálogo (las descargadas)
         self._firma: tuple = ()
         self._todas: dict[str, Skill] = {}
 
     @classmethod
     def desde_config(cls, config) -> "Skills":
-        carpetas = [INCLUIDAS, config.rutas.config / "skills"]
+        carpetas = [INCLUIDAS, descargadas(config), config.rutas.config / "skills"]
         for c in config.skills_carpetas or []:
             carpetas.append(Path(os.path.expandvars(os.path.expanduser(str(c)))))
-        return cls(carpetas)
+        return cls(carpetas, al_final=[carpetas[1]])
 
     @property
     def propia(self) -> Path:
         """La carpeta donde el usuario pone sus skills (se crea con un LEEME)."""
-        return self.carpetas[1] if len(self.carpetas) > 1 else self.carpetas[0]
+        return self.carpetas[2] if len(self.carpetas) > 2 else self.carpetas[-1]
 
     def contiene(self, ruta: Path) -> bool:
         """¿La ruta cae dentro de alguna carpeta de skills?"""
@@ -170,7 +199,7 @@ class Skills:
     def todas(self) -> dict[str, Skill]:
         """Vuelve a mirar las carpetas en cada llamada: si agregas o cambias una skill, NOVA la ve sin reiniciar."""
         archivos = self._archivos()
-        firma = tuple((str(a), _mtime(a)) for a in archivos)
+        firma = tuple((str(a), _mtime(a), _mtime(a.parent / DESCRIPCION_ES)) for a in archivos)
         if firma == self._firma:
             return self._todas
         todas: dict[str, Skill] = {}
@@ -181,7 +210,12 @@ class Skills:
             except OSError:
                 continue
             nombre = (datos.get("name") or a.parent.name).strip().lower()
-            descripcion = re.sub(r"\s+", " ", datos.get("description", "")).strip()
+            descripcion = datos.get("description", "")
+            try:
+                descripcion = (a.parent / DESCRIPCION_ES).read_text(encoding="utf-8")[:500] or descripcion
+            except OSError:
+                pass
+            descripcion = re.sub(r"\s+", " ", descripcion).strip()
             if not NOMBRE_VALIDO.match(nombre) or not descripcion:
                 continue  # sin nombre válido o sin descripción no se puede elegir bien
             todas[nombre] = Skill(nombre, descripcion, a.parent, a)
@@ -193,17 +227,19 @@ class Skills:
         clave = _plano(nombre).strip().strip("«»\"'/").replace(" ", "-").replace("_", "-")
         return todas.get(clave)
 
-    def catalogo(self, max_chars: int = 900, max_desc: int = 140) -> str:
+    def catalogo(self, max_chars: int = 1400, max_desc: int = 90) -> str:
         """Lista corta para el prompt: «- nombre: descripción». Estable entre turnos (sirve a la caché)."""
-        lineas, total = [], 0
-        for s in self.todas().values():
+        lineas, total, sobran = [], 0, []
+        for s in sorted(self.todas().values(), key=lambda s: (s.carpeta.parent in self.al_final, s.nombre)):
             d = s.descripcion if len(s.descripcion) <= max_desc else s.descripcion[:max_desc].rsplit(" ", 1)[0] + "…"
             linea = f"- {s.nombre}: {d}"
-            if total + len(linea) > max_chars:
-                lineas.append("- (hay más; usa usar_skill con el nombre si el usuario menciona otra)")
-                break
+            if sobran or total + len(linea) > max_chars:
+                sobran.append(s.nombre)  # ya no caben con descripción: solo el nombre
+                continue
             lineas.append(linea)
             total += len(linea) + 1
+        if sobran:
+            lineas.append("- Otras (ábrelas con usar_skill): " + ", ".join(sobran))
         return "\n".join(lineas)
 
     def elegir(self, texto: str) -> Skill | None:
@@ -215,7 +251,7 @@ class Skills:
             s = self.buscar(m.group(1) or m.group(2))
             if s:
                 return s
-        palabras = _raices(texto)
+        palabras = _raices(texto, 3)
         if not palabras:
             return None
         puntos = []
@@ -277,3 +313,59 @@ def _mtime(ruta: Path) -> float:
         return ruta.stat().st_mtime
     except OSError:
         return 0.0
+
+
+def descargadas(config) -> Path:
+    return config.rutas.datos / "skills-anthropic"
+
+
+def bajar_anthropic(destino: Path, url: str = ANTHROPIC_ZIP, timeout: float = 60, max_mb: int = 80) -> dict:
+    """Baja las skills de github.com/anthropics/skills a destino (reemplaza lo que había).
+
+    Se salta las que tienen licencia restringida (docx, pdf, pptx, xlsx: solo se pueden usar dentro de los
+    servicios de Anthropic, no con otro modelo). Nada se ejecuta: solo se guardan archivos.
+    """
+    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "NOVA"}), timeout=timeout) as r:
+        datos = r.read(max_mb * 1024 * 1024 + 1)
+    if len(datos) > max_mb * 1024 * 1024:
+        raise ValueError(f"la descarga pasa de {max_mb} MB")
+    zf = zipfile.ZipFile(io.BytesIO(datos))
+    grupos: dict[str, list[tuple[zipfile.ZipInfo, str]]] = {}
+    for info in zf.infolist():
+        partes = info.filename.split("/")
+        # <raíz>/skills/<nombre>/<ruta…>
+        if len(partes) < 4 or partes[1] != "skills" or info.is_dir() or not partes[-1]:
+            continue
+        nombre, relativa = partes[2], "/".join(partes[3:])
+        if not NOMBRE_VALIDO.match(nombre) or any(p in {"", ".", ".."} for p in partes[3:]) or "\\" in relativa or ":" in relativa:
+            continue
+        if (info.external_attr >> 16) & 0o170000 == 0o120000:  # enlace simbólico
+            continue
+        grupos.setdefault(nombre, []).append((info, relativa))
+    instaladas, omitidas = [], {}
+    temporal = destino.with_name(destino.name + ".nuevo")
+    shutil.rmtree(temporal, ignore_errors=True)
+    for nombre, archivos in sorted(grupos.items()):
+        rel = {r: i for i, r in archivos}
+        if "SKILL.md" not in rel:
+            continue
+        licencia = zf.read(rel["LICENSE.txt"]).decode("utf-8", "replace") if "LICENSE.txt" in rel else ""
+        cabecera = separar(zf.read(rel["SKILL.md"])[:MAX_SKILL_MD].decode("utf-8", "replace"))[0]
+        if "proprietary" in cabecera.get("license", "").lower() or (licencia and "Apache License" not in licencia):
+            omitidas[nombre] = "licencia restringida a los servicios de Anthropic"
+            continue
+        for relativa, info in rel.items():
+            if info.file_size > 20 * 1024 * 1024:
+                continue
+            ruta = temporal / nombre / relativa
+            ruta.parent.mkdir(parents=True, exist_ok=True)
+            ruta.write_bytes(zf.read(info))
+        if nombre in DESCRIPCIONES_ANTHROPIC:
+            (temporal / nombre / DESCRIPCION_ES).write_text(DESCRIPCIONES_ANTHROPIC[nombre], encoding="utf-8")
+        instaladas.append(nombre)
+    if not instaladas:
+        shutil.rmtree(temporal, ignore_errors=True)
+        raise ValueError("la descarga no traía skills")
+    shutil.rmtree(destino, ignore_errors=True)
+    temporal.rename(destino)
+    return {"instaladas": instaladas, "omitidas": omitidas, "carpeta": str(destino)}

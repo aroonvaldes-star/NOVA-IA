@@ -104,6 +104,8 @@ def orden_rapida(texto: str) -> OrdenRapida | None:
         return OrdenRapida("privado", {"activo": True})
     if re.fullmatch(r"(ya puedes recordar|sal del modo privado|termina el modo privado)", t):
         return OrdenRapida("privado", {"activo": False})
+    if re.fullmatch(r"(baja|bajate|descarga|instala|actualiza|trae) (todas )?(las |tus )?skills( de (anthropic|agent ?skills|github))?", t):
+        return OrdenRapida("bajar_skills", {})
     if re.fullmatch(r"(que|cuales) (skills|habilidades) tienes|(tus|mis|lista de|ver) (skills|habilidades)|skills", t):
         return OrdenRapida("skills", {})
     if re.fullmatch(r"(tu estado|estado|que eres|quien eres)", t):
