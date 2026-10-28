@@ -1,10 +1,13 @@
 """Contexto de NOVA: conversación que sigue al reabrir, tus carpetas, la pantalla y la vista del motor."""
 
 import json
+import sys
 import struct
 import time
 import zipfile
 import zlib
+
+import pytest
 
 from nova import pantalla
 from nova.herramientas import Resultado
@@ -67,6 +70,7 @@ def test_herramienta_buscar_archivos(crear_nova, tmp_path):
     assert "presupuesto-2026.csv" in nova.motor.recibidos[1][-1]["content"]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="en Windows sí puede ver la pantalla")
 def test_mira_mi_pantalla_fuera_de_windows_lo_dice(crear_nova):
     nova = crear_nova()
     assert "No pude ver la pantalla" in nova.procesar("mira mi pantalla")

@@ -8,6 +8,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 os.environ.setdefault("NOVA_PERMITIR_ROOT", "1")
 
 
+def pytest_configure(config):
+    # En Windows las carpetas temporales viven en AppData, que NOVA protege a propósito:
+    # las pruebas usan una carpeta junto al proyecto, como cualquier carpeta tuya.
+    if sys.platform == "win32" and not config.option.basetemp:
+        config.option.basetemp = str(Path(__file__).resolve().parent.parent / ".pruebas-tmp")
+
+
 @pytest.fixture
 def config(tmp_path, monkeypatch):
     monkeypatch.setenv("NOVA_HOME", str(tmp_path / "nova"))
