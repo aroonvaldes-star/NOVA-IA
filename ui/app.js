@@ -1,7 +1,8 @@
 // Interfaz de NOVA: conecta el orbe con el núcleo (eventos, mensajes, voz,
 // confirmaciones). Funciona en tres modos:
 //   escritorio  dentro de Tauri: ventana transparente a pantalla completa que
-//               deja pasar los clics salvo sobre la barra y la conversación
+//               deja pasar los clics salvo sobre el orbe y la conversación
+//   barra       dentro de Tauri: la ventanita aparte donde le escribes
 //   navegador   la ventana de NOVA: el orbe flota junto a la conversación
 //   celular     conectado a tu PC por la red de tu casa
 
@@ -10,14 +11,15 @@ import { Orbe } from './orbe.js';
 const TOKEN = document.querySelector('meta[name="nova-token"]').content;
 const TAURI = window.__TAURI__;
 const CELULAR = document.body.classList.contains('celular');
-const MODO = TAURI ? 'escritorio' : CELULAR ? 'celular' : 'navegador';
-if (MODO === 'navegador') document.body.classList.add('navegador');
+const BARRA = TAURI && new URLSearchParams(location.search).has('barra');
+const MODO = BARRA ? 'barra' : TAURI ? 'escritorio' : CELULAR ? 'celular' : 'navegador';
+if (MODO === 'navegador' || MODO === 'barra') document.body.classList.add(MODO);
 
 
 const $ = (s) => document.querySelector(s);
 const entrada = $('#entrada'), campo = $('#texto');
 const orbe = new Orbe($('#orbe'), { libre: MODO !== 'celular' });
-if (MODO !== 'escritorio') campo.placeholder = 'Escríbele a NOVA…';
+if (MODO !== 'escritorio') campo.placeholder = MODO === 'barra' ? 'Escríbele a NOVA… (Esc para cerrar)' : 'Escríbele a NOVA…';
 
 let tokenCelular = null;
 try { tokenCelular = localStorage.getItem('nova-dispositivo'); } catch { /* sin almacenamiento */ }
@@ -225,6 +227,13 @@ function alEvento(e) {
       if (e.estado === 'procesando' && !enCurso && !estado) lineaEstado('Pensando…');
       if (e.estado === 'reposo') $('#ind-pantalla').hidden = true;
       break;
+    case 'usuario': {
+      // Lo que escribiste aquí ya se ve; lo de otras ventanas (la barra, el celular, la voz) aparece al llegar.
+      const i = enviadosAqui.indexOf(e.texto);
+      if (i >= 0) enviadosAqui.splice(i, 1);
+      else if (MODO !== 'barra') { mensaje('tu', e.texto); lineaEstado('Pensando…'); despertar(); }
+      break;
+    }
     case 'token':
       escribiendo(e.texto);
       break;
@@ -336,8 +345,17 @@ entrada.addEventListener('submit', (ev) => {
   enviar(texto);
 });
 
+const enviadosAqui = [];
+
 function enviar(texto, voz = false) {
+  if (MODO === 'barra') {
+    // La respuesta se lee junto al orbe; la barra se esconde.
+    api('/api/mensaje', voz ? { texto, voz: true } : { texto });
+    TAURI.core.invoke('cerrar_barra').catch(() => {});
+    return;
+  }
   if (enCurso) terminarMensaje(textoEnCurso);
+  enviadosAqui.push(texto);
   mensaje('tu', texto);
   lineaEstado('Pensando…');
   api('/api/mensaje', voz ? { texto, voz: true } : { texto });
@@ -346,8 +364,9 @@ function enviar(texto, voz = false) {
 addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') {
     if (MODO === 'escritorio') mostrarEntrada(false);
+    if (MODO === 'barra') TAURI.core.invoke('cerrar_barra').catch(() => {});
     callar();
-  } else if (!entradaVisible && ev.key.length === 1 && !ev.ctrlKey && !ev.altKey) {
+  } else if (MODO !== 'escritorio' && !entradaVisible && ev.key.length === 1 && !ev.ctrlKey && !ev.altKey) {
     mostrarEntrada(true);
   }
 });
@@ -383,6 +402,13 @@ function despertar() {
 orbe.alMover = ({ x, y, r }) => {
   if (MODO === 'celular') return;
   const ind = $('#indicadores');
+  const toque = $('#toque');
+  if (!toque.hidden) {
+    const lado = r * 1.3;
+    Object.assign(toque.style, { left: `${x - lado / 2}px`, top: `${y - lado / 2}px`, width: `${lado}px`, height: `${lado}px` });
+    const halo = $('#halo'), h = r * 3.2;
+    Object.assign(halo.style, { left: `${x - h / 2}px`, top: `${y - h / 2}px`, width: `${h}px`, height: `${h}px` });
+  }
   ind.style.left = `${x}px`;
   ind.style.top = `${Math.max(8, y - r * 1.6 - 24)}px`;
   if (MODO !== 'escritorio') return;
@@ -506,14 +532,38 @@ for (const tipo of ['pointerup', 'pointerleave', 'pointercancel']) mic.addEventL
 
 // ------------------------------------------------------- escritorio (Tauri)
 
-if (TAURI) {
+function localStorageSeguro(clave, valor) {
+  try {
+    if (valor === undefined) return localStorage.getItem(clave);
+    localStorage.setItem(clave, valor);
+  } catch { /* sin almacenamiento */ }
+  return null;
+}
+
+if (MODO === 'barra') {
+  // Solo la barra: siempre visible y con el cursor listo para escribir.
+  mostrarEntrada(true);
+  TAURI.event.listen('enfocar', () => { campo.value = ''; campo.focus(); });
+  addEventListener('focus', () => campo.focus());
+}
+
+if (MODO === 'escritorio') {
   document.body.classList.add('escritorio');
   mostrarEntrada(false);
   const { listen } = TAURI.event;
   const { invoke } = TAURI.core;
   listen('cursor', (e) => orbe.moverCursor(e.payload.x, e.payload.y));
-  listen('abrir', () => mostrarEntrada(!entradaVisible));
   listen('hablar', (e) => (e.payload.activo ? empezarGrabacion() : terminarGrabacion()));
+  // Clic en el orbe: abre la barra para escribirle.
+  const toque = $('#toque');
+  toque.hidden = false;
+  $('#halo').hidden = false;
+  toque.addEventListener('click', () => invoke('abrir_barra').catch(() => {}));
+  if (!localStorageSeguro('nova-pista-escritorio')) {
+    mensaje('sistema', 'Dame clic para escribirme, o usa Ctrl+Alt+A. Para hablarme, mantén Ctrl+Alt+Espacio.');
+    despertar();
+    localStorageSeguro('nova-pista-escritorio', '1');
+  }
   // Le dice al envoltorio qué zonas reciben clics; el resto deja pasar el ratón al escritorio.
   setInterval(() => {
     const zonas = [];
@@ -521,7 +571,7 @@ if (TAURI) {
       const r = el.getBoundingClientRect();
       if (r.width && r.height) zonas.push([r.left, r.top, r.width, r.height]);
     };
-    if (entradaVisible) agregar(entrada);
+    agregar(toque);
     if (!conversacion.classList.contains('dormida')) agregar(conversacion);
     invoke('zonas', { zonas }).catch(() => {});
   }, 120);

@@ -37,6 +37,18 @@ body.navegador, body.celular {
 
 .flotante { position: fixed; z-index: 2; }
 
+/* En el escritorio: la zona del orbe donde le das clic para escribirle. */
+#toque {
+  z-index: 4;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: box-shadow 0.2s ease;
+}
+#toque:hover { box-shadow: 0 0 0 2px rgba(140, 170, 255, 0.35), 0 0 30px rgba(59, 130, 246, 0.35); }
+
 #indicadores {
   display: flex;
   gap: 8px;
@@ -264,8 +276,35 @@ body.celular #microfono { width: 44px; height: 44px; }
 
 /* ------------------------------------------- escritorio (Tauri, transparente) */
 body.escritorio #charla { width: min(460px, 40vw); max-height: 56vh; }
-body.escritorio .msg { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.95), 0 0 2px rgba(0, 0, 0, 0.9); }
-body.escritorio #conversacion { transition: opacity 0.6s ease; }
+/* Sobre cualquier fondo de escritorio: vidrio oscuro detrás del texto y el orbe con contorno. */
+body.escritorio #conversacion {
+  transition: opacity 0.6s ease;
+  background: rgba(6, 10, 22, 0.82);
+  border: 1px solid rgba(140, 170, 255, 0.35);
+  border-radius: 16px;
+  padding: 14px 16px 6px;
+  backdrop-filter: blur(16px);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+body.escritorio .msg { color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8); }
+body.escritorio .msg.tu { color: #dbe4ff; }
+body.escritorio #orbe {
+  filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 12px rgba(0, 0, 0, 0.55)) brightness(1.35) saturate(1.25);
+}
+/* Un velo oscuro detrás del orbe para que resalte en fondos claros. */
+#halo {
+  position: fixed;
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(3, 6, 18, 0.62) 0%, rgba(3, 6, 18, 0.42) 38%, rgba(3, 6, 18, 0) 70%);
+}
+body.escritorio #indicadores span { background: rgba(6, 10, 22, 0.9); color: #fff; }
+
+/* ------------------------------------------------ barra para escribirle (Tauri) */
+body.barra { background: transparent; }
+body.barra #orbe, body.barra #indicadores, body.barra #conversacion, body.barra #toque { display: none; }
+body.barra #charla { left: 8px; right: 8px; top: 8px; bottom: 8px; justify-content: center; }
+body.barra #entrada { background: rgba(8, 12, 26, 0.94); border-color: rgba(140, 170, 255, 0.55); }
 body.escritorio #conversacion.dormida { opacity: 0; }
 
 @media (prefers-reduced-motion: reduce) {

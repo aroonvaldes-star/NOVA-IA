@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "orbe",
-  "description": "El orbe (servido por el núcleo en 127.0.0.1) puede escuchar eventos y reportar sus zonas de clic.",
-  "windows": ["orbe"],
+  "description": "El orbe y su barra (servidos por el núcleo en 127.0.0.1) pueden escuchar eventos, reportar sus zonas de clic y abrir o cerrar la barra.",
+  "windows": ["orbe", "barra"],
   "remote": {
     "urls": ["http://127.0.0.1:*"]
   },

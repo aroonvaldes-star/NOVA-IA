@@ -12,8 +12,10 @@
 <script type="module" src="app.js"></script>
 </head>
 <body class="{{NOVA_MODO}}">
+<div id="halo" hidden></div>
 <canvas id="orbe" aria-label="NOVA"></canvas>
 
+<button id="toque" class="flotante" type="button" title="Escríbeme (Ctrl+Alt+A) · Mantén Ctrl+Alt+Espacio para hablarme" aria-label="Escribirle a NOVA" hidden></button>
 <div id="indicadores" class="flotante">
   <span id="ind-internet" hidden>🌐 internet</span>
   <span id="ind-pantalla" hidden>👁 viendo tu pantalla</span>

@@ -161,6 +161,8 @@ export class Orbe {
     this.nivelAudio = 0;
     this.audioSuave = 0;
     this.cursor = { x: -1e4, y: -1e4 };
+    this.rapidezCursor = 0;  // px/s, suavizada
+    this.cursorT = 0;
     this.anclado = false;
     this.ancla = null;
     this.zona = null;  // {x, y, w, h}: espacio por el que flota (si no, toda la ventana)
@@ -306,7 +308,14 @@ export class Orbe {
   }
 
   audio(nivel) { this.nivelAudio = Math.max(0, Math.min(1, nivel)); }
-  moverCursor(x, y) { this.cursor.x = x; this.cursor.y = y; }
+  moverCursor(x, y) {
+    const ahora = performance.now();
+    const dt = Math.max(1, ahora - this.cursorT) / 1000;
+    const v = Math.hypot(x - this.cursor.x, y - this.cursor.y) / dt;
+    this.rapidezCursor = this.cursorT ? this.rapidezCursor * 0.7 + Math.min(v, 5000) * 0.3 : 0;
+    this.cursorT = ahora;
+    this.cursor.x = x; this.cursor.y = y;
+  }
   anclar(activo, punto = null) { this.anclado = activo; this.ancla = punto; }
   // Limita el vuelo a una zona (por ejemplo, junto a la conversación) y ajusta el tamaño.
   limitar(zona = null, escala = 1) { this.zona = zona; this.escalaZona = escala; }
@@ -336,8 +345,9 @@ export class Orbe {
     const k = anclaPorEstado || this.anclado ? 3.0 : 0.6;
     let ax = (obj.x - this.pos.x) * k - this.vel.x * 2.2;
     let ay = (obj.y - this.pos.y) * k - this.vel.y * 2.2;
-    // Se aparta del cursor (solo en reposo, para no huir cuando le hablas).
-    if (!anclaPorEstado && !this.anclado) {
+    // Se aparta del cursor cuando pasa rápido (solo en reposo, para no huir cuando le hablas).
+    // Si te acercas despacio, se queda quieta para que le puedas dar clic.
+    if (!anclaPorEstado && !this.anclado && this.rapidezCursor > 450) {
       const dx = this.pos.x - this.cursor.x, dy = this.pos.y - this.cursor.y;
       const d = Math.hypot(dx, dy), radio = this.radioPx + 140;
       if (d < radio && d > 0.1) {

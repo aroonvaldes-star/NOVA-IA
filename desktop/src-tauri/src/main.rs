@@ -6,11 +6,15 @@
 // tarjetas). También:
 //   * arranca el núcleo de NOVA (Python) si no está corriendo y lo cierra al salir
 //   * manda la posición del cursor al orbe para que se aparte
-//   * registra los atajos globales: Ctrl+Alt+A (abrir) y Ctrl+Alt+Espacio (hablar)
+//   * abre una barra aparte (ventana normal, que sí recibe el teclado) para escribirle:
+//     con clic en el orbe, con Ctrl+Alt+A o desde la bandeja
+//   * registra los atajos globales: Ctrl+Alt+A (escribir) y Ctrl+Alt+Espacio (hablar)
 //   * pone el icono en la bandeja del sistema
+//   * deja lo que falle en %LOCALAPPDATA%\NOVA\estado\escritorio.log
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::io::Write;
 use std::net::{SocketAddr, TcpStream};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -19,7 +23,7 @@ use std::time::{Duration, Instant};
 
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 const PUERTO: u16 = 8190;
@@ -27,11 +31,65 @@ const PUERTO: u16 = 8190;
 struct Zonas(Mutex<Vec<[f64; 4]>>);
 struct Nucleo(Mutex<Option<Child>>);
 
+/// Anota en estado\escritorio.log (la app no tiene consola donde verlo).
+fn anotar(texto: &str) {
+    let Ok(local) = std::env::var("LOCALAPPDATA") else { return };
+    let dir = PathBuf::from(local).join("NOVA").join("estado");
+    let _ = std::fs::create_dir_all(&dir);
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("escritorio.log")) {
+        let segundos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let _ = writeln!(f, "[{segundos}] {texto}");
+    }
+}
+
 #[tauri::command]
 fn zonas(estado: tauri::State<'_, Zonas>, zonas: Vec<[f64; 4]>) {
     if let Ok(mut z) = estado.0.lock() {
+        if z.is_empty() && !zonas.is_empty() {
+            anotar("La interfaz del orbe ya se comunica con el escritorio.");
+        }
         *z = zonas;
     }
+}
+
+#[tauri::command]
+fn abrir_barra(app: AppHandle) {
+    mostrar_barra(&app, true);
+}
+
+#[tauri::command]
+fn cerrar_barra(app: AppHandle) {
+    mostrar_barra(&app, false);
+}
+
+/// Muestra (y enfoca) o esconde la barra para escribirle.
+fn mostrar_barra(app: &AppHandle, visible: bool) {
+    let Some(b) = app.get_webview_window("barra") else {
+        anotar("No existe la ventana de la barra.");
+        return;
+    };
+    if visible {
+        let _ = b.show();
+        let _ = b.unminimize();
+        let _ = b.set_focus();
+        let _ = b.emit("enfocar", ());
+    } else {
+        let _ = b.hide();
+    }
+}
+
+fn alternar_barra(app: &AppHandle) {
+    let visible = app
+        .get_webview_window("barra")
+        .and_then(|b| b.is_visible().ok())
+        .unwrap_or(false);
+    if let Some(w) = app.get_webview_window("orbe") {
+        let _ = w.show();
+    }
+    mostrar_barra(app, !visible);
 }
 
 fn nucleo_responde() -> bool {
@@ -95,7 +153,7 @@ fn arrancar_nucleo(app: &AppHandle) {
                 *n = Some(hijo);
             }
         }
-        Err(e) => eprintln!("No se pudo arrancar el núcleo de NOVA: {e}"),
+        Err(e) => anotar(&format!("No se pudo arrancar el núcleo de NOVA: {e}")),
     }
     let limite = Instant::now() + Duration::from_secs(40);
     while Instant::now() < limite && !nucleo_responde() {
@@ -131,6 +189,36 @@ fn crear_ventana(app: &AppHandle) -> tauri::Result<()> {
     }
     ventana.set_ignore_cursor_events(true)?;
     ventana.show()?;
+
+    // La barra para escribirle: una ventana normal (recibe teclado y clics), abajo al centro.
+    let url_barra = format!("http://127.0.0.1:{PUERTO}/?barra=1").parse().expect("URL válida");
+    let barra = WebviewWindowBuilder::new(app, "barra", WebviewUrl::External(url_barra))
+        .title("Escríbele a NOVA")
+        .transparent(true)
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .shadow(false)
+        .resizable(false)
+        .inner_size(620.0, 76.0)
+        .visible(false)
+        .build()?;
+    if let Some(monitor) = barra.primary_monitor()? {
+        let escala = monitor.scale_factor();
+        let tam = monitor.size().to_logical::<f64>(escala);
+        let origen = monitor.position().to_logical::<f64>(escala);
+        let _ = barra.set_position(tauri::LogicalPosition::new(
+            origen.x + (tam.width - 620.0) / 2.0,
+            origen.y + tam.height - 76.0 - 90.0,
+        ));
+    }
+    // Si das clic en otra parte, la barra se esconde sola.
+    let b = barra.clone();
+    barra.on_window_event(move |evento| {
+        if let WindowEvent::Focused(false) = evento {
+            let _ = b.hide();
+        }
+    });
 
     // Cursor: posición para el orbe y clics solo sobre las zonas interactivas.
     let w = ventana.clone();
@@ -171,11 +259,7 @@ fn main() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, atajo, evento| {
                     if atajo == &abrir && evento.state() == ShortcutState::Pressed {
-                        if let Some(w) = app.get_webview_window("orbe") {
-                            let _ = w.show();
-                            let _ = w.set_focus();
-                        }
-                        let _ = app.emit("abrir", ());
+                        alternar_barra(app);
                     } else if atajo == &hablar {
                         let activo = evento.state() == ShortcutState::Pressed;
                         let _ = app.emit("hablar", serde_json::json!({ "activo": activo }));
@@ -183,22 +267,27 @@ fn main() {
                 })
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![zonas])
+        .invoke_handler(tauri::generate_handler![zonas, abrir_barra, cerrar_barra])
         .setup(move |app| {
             let handle = app.handle().clone();
             arrancar_nucleo(&handle);
+            if !nucleo_responde() {
+                anotar("El núcleo de NOVA no respondió en 40 s; el orbe se quedará vacío.");
+            }
             crear_ventana(&handle)?;
+            anotar("NOVA de escritorio abierta.");
 
             if let Err(e) = app.global_shortcut().register(abrir) {
-                eprintln!("No pude registrar Ctrl+Alt+A: {e}");
+                anotar(&format!("No pude registrar Ctrl+Alt+A (¿otra app lo usa?): {e}"));
             }
             if let Err(e) = app.global_shortcut().register(hablar) {
-                eprintln!("No pude registrar Ctrl+Alt+Espacio: {e}");
+                anotar(&format!("No pude registrar Ctrl+Alt+Espacio (¿otra app lo usa?): {e}"));
             }
 
+            let escribir = MenuItem::with_id(app, "escribir", "Escribirle (Ctrl+Alt+A)", true, None::<&str>)?;
             let mostrar = MenuItem::with_id(app, "mostrar", "Mostrar u ocultar a NOVA", true, None::<&str>)?;
             let salir = MenuItem::with_id(app, "salir", "Salir", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&mostrar, &salir])?;
+            let menu = Menu::with_items(app, &[&escribir, &mostrar, &salir])?;
             let mut bandeja = TrayIconBuilder::with_id("nova").tooltip("NOVA").menu(&menu);
             if let Some(icono) = app.default_window_icon() {
                 bandeja = bandeja.icon(icono.clone());
@@ -206,6 +295,7 @@ fn main() {
             bandeja
                 .on_menu_event(|app, evento| match evento.id.as_ref() {
                     "salir" => app.exit(0),
+                    "escribir" => mostrar_barra(app, true),
                     "mostrar" => {
                         if let Some(w) = app.get_webview_window("orbe") {
                             if w.is_visible().unwrap_or(false) {

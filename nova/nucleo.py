@@ -143,6 +143,8 @@ class Nova:
         texto = texto.strip()
         if not texto:
             return ""
+        # Todas las ventanas muestran lo que escribiste (en el escritorio escribes en la barra y lees junto al orbe).
+        self.bus.publicar({"tipo": "usuario", "texto": texto, "voz": por_voz})
         with self._cerrojo:
             self.ultima_actividad = time.monotonic()
             if time.time() - self._ultimo_mensaje > float(self.config.retomar_horas) * 3600:
