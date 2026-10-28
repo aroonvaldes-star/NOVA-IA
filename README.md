@@ -2,7 +2,7 @@
 
 NOVA es una asistente de inteligencia artificial que vive en tu computadora. Es un proyecto propio e independiente: tiene su motor, su memoria, su voz, su personalidad y su avatar, un orbe holográfico que flota libre por tu escritorio. Funciona sin internet y, cuando hay conexión y no sabe algo, lo busca en seguida.
 
-> **Estado: versión 1.4.0.** Instalada en la PC de Aroon (Windows 11, RTX 3050). Se actualiza desde este repositorio con `actualizar.bat`. Cada cambio corre 263 pruebas en Linux y en Windows (GitHub Actions), y GitHub compila el orbe de escritorio. Falta probar en la PC de Aroon lo que depende de su equipo: ver [Pendiente de verificar](#pendiente-de-verificar).
+> **Estado: versión 1.5.0.** Instalada en la PC de Aroon (Windows 11, RTX 3050). Se actualiza desde este repositorio con `actualizar.bat`. Cada cambio corre 271 pruebas en Linux y en Windows (GitHub Actions), y GitHub compila el orbe de escritorio. Falta probar en la PC de Aroon lo que depende de su equipo: ver [Pendiente de verificar](#pendiente-de-verificar).
 
 ![Estados del orbe: procesando, buscando, hablando y activa en tecnología](docs/capturas/estados.png)
 
@@ -24,7 +24,7 @@ NOVA es una asistente de inteligencia artificial que vive en tu computadora. Es 
 | **Voz** | Pulsar para hablar (Ctrl+Alt+Espacio): whisper.cpp para oír y Piper con voz es_MX para hablar, todo local. El orbe late con su voz. |
 | **Plática de a ratos** | Hasta 3 veces al día te habla por iniciativa (retoma tus proyectos, pregunta cómo te fue, sugiere un descanso). Nunca con pantalla completa, en llamada, con «No molestar» ni de 23:00 a 08:00. |
 | **Orbe** | Red de nodos y conexiones con anillos orbitales. Reposo (azul tenue), activa (azul brillante), procesando (dorado), buscando (verde), hablando (púrpura). Colores por contexto: azul general, cian tecnología, púrpura creatividad, dorado análisis, verde investigación, rojo prioridad, rosa apoyo. Se mueve libre por el escritorio y se aparta del cursor. |
-| **Cerebro grande** | Opcional: un modelo grande en la nube (Groq gratis, ver `oracle/CEREBRO-GRATIS.md`) para entender mejor. Con `cerebro_auto` lo usa siempre que hay internet; si falla o no hay red, contesta con el modelo local. |
+| **Cerebro grande** | Opcional: modelos grandes en la nube para entender mejor. Con OmniRoute en tu PC (`omniroute.bat`, ver `oracle/OMNIROUTE.md`) junta varios proveedores gratis y cambia solo cuando uno se agota; «¿quién contestó?» dice qué modelo respondió. También sirve Groq directo (`oracle/CEREBRO-GRATIS.md`). Con `cerebro_auto` lo usa siempre que hay internet; si falla o no hay red, contesta con el modelo local. |
 | **Tus archivos primero** | Si le preguntas por tus archivos, carpetas o proyectos, usa sus herramientas locales (y revisa la ruta que escribas) en vez de buscar en internet. |
 | **Libre en el escritorio** | El acceso «NOVA» abre el orbe flotando sobre tus ventanas, sin marco y dejando pasar los clics; «NOVA en ventana» la abre en su ventana. Para escribirle: clic en el orbe, Alt Gr+A (Ctrl+Alt+A) o clic en su icono junto al reloj. Alt Gr+Q (o Ctrl+Shift+Q) la esconde y la vuelve a sacar. Se queda quieta mientras piensa o habla, y el texto va sobre un vidrio oscuro para leerse con cualquier fondo. |
 | **Celular** | Conexión directa celular ↔ PC por el Wi-Fi de tu casa, sin nube. Emparejas con un código de 6 cifras. |

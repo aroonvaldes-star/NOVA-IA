@@ -171,7 +171,19 @@ def diagnosticar(config: Config | None = None, rapido: bool = False) -> Reporte:
     r.titulo("Cerebro grande")
     if not config.cerebro_endpoint:
         r(AVISO, "No está configurado", "Para que entienda mejor, conecta uno gratis: oracle/CEREBRO-GRATIS.md")
-    elif not rapido:
+    else:
+        from . import omniroute
+
+        if omniroute.es_omniroute(config.cerebro_endpoint):
+            if omniroute.escuchando():
+                r(BIEN, "OmniRoute corriendo en 127.0.0.1:20128", "Panel con la auditoría completa: http://127.0.0.1:20128")
+            elif omniroute.programa(config.rutas.datos):
+                r(AVISO, "OmniRoute está instalado pero apagado", "NOVA lo prende al abrir; si no, revisa estado\\omniroute.log")
+            else:
+                r(MAL, "Apunto a OmniRoute pero no está instalado", "Abre omniroute.bat en la carpeta de NOVA.")
+            if not config.cerebro_clave:
+                r(AVISO, "OmniRoute sin clave de NOVA: solo lo protege que escucha en 127.0.0.1")
+    if config.cerebro_endpoint and not rapido:
         from .motor import MotorRemoto
 
         cerebro = MotorRemoto(config)
@@ -181,7 +193,7 @@ def diagnosticar(config: Config | None = None, rapido: bool = False) -> Reporte:
             r(BIEN, f"{cerebro.modelo} respondió en {time.monotonic() - t0:.1f} s: {texto.strip()[:60]}"
               + (" (lo uso para todo cuando hay internet)" if config.cerebro_auto else " (solo con «piénsalo bien:»)"))
         except urllib.error.HTTPError as exc:
-            pista = {401: "La clave no es válida: revisa cerebro_clave.", 404: "No existe ese modelo o esa dirección: revisa cerebro_api_modelo y cerebro_endpoint.",
+            pista = {401: "La clave no es válida: revisa cerebro_clave.", 503: "OmniRoute no tiene proveedores con cuota: agrega claves con omniroute.bat.", 404: "No existe ese modelo o esa dirección: revisa cerebro_api_modelo y cerebro_endpoint.",
                      429: "Se acabó el límite gratis por ahora; vuelve a intentar más tarde."}.get(exc.code, "")
             r(MAL, f"El cerebro grande respondió con error {exc.code}", pista)
         except Exception as exc:  # noqa: BLE001

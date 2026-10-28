@@ -25,7 +25,7 @@ import urllib.parse
 import uuid
 from typing import Any, Callable
 
-from . import __version__, aprendizaje, pantalla, platica, personalidad, politica
+from . import __version__, aprendizaje, omniroute, pantalla, platica, personalidad, politica
 from .skills import Skills
 from .config import Config
 from .celular import Emparejador
@@ -231,6 +231,40 @@ class Nova:
         except OSError:
             pass
 
+    def auditoria(self, ultimas: int = 8) -> str:
+        """Las últimas llamadas a modelos en palabras: quién contestó cada vez, en cuánto, y si falló."""
+        archivo = self.config.rutas.estado / "auditoria.jsonl"
+        try:
+            lineas = archivo.read_text(encoding="utf-8").splitlines()[-ultimas:]
+        except OSError:
+            lineas = []
+        filas = []
+        for linea in lineas:
+            try:
+                filas.append(json.loads(linea))
+            except ValueError:
+                continue
+        if not filas:
+            return "Todavía no tengo llamadas anotadas en la auditoría."
+        partes = []
+        for f in filas:
+            hora = str(f.get("fecha", ""))[11:16]
+            quien = f.get("modelo_real") or f.get("modelo") or "?"
+            if f.get("motor") == "nube":
+                donde = f.get("endpoint") or "la nube"
+                quien = f"{quien} vía {'OmniRoute' if donde.endswith(':20128') else donde}"
+            else:
+                quien = f"{quien} (local)"
+            detalle = f"falló: {f['error'][:120]}" if f.get("error") else (
+                f"{f['segundos']:.1f} s" if isinstance(f.get("segundos"), (int, float)) else "")
+            if f.get("accion"):
+                detalle += f", usó {f['accion'][:60]}"
+            partes.append(f"- {hora} {quien}" + (f": {detalle}" if detalle else ""))
+        pie = f"\nTodo queda en {archivo}."
+        if self.cerebro and str(getattr(self.cerebro, "endpoint", "")).rstrip("/").endswith(":20128/v1"):
+            pie += " El detalle por proveedor (tokens, cuotas, cambios automáticos) está en http://127.0.0.1:20128."
+        return "Estas fueron mis últimas llamadas:\n" + "\n".join(partes) + pie
+
     def _anotar_tiempos(self) -> None:
         """Deja en estado/tiempos.log cuánto tardó cada respuesta, para saber qué la frena."""
         if self._inicio_turno is None:
@@ -321,6 +355,11 @@ class Nova:
             return self._pensar(pregunta, ctx)
         if not self.config.cerebro_auto:
             self.bus.publicar({"tipo": "aviso", "texto": f"Lo pienso con mi cerebro grande ({self.cerebro.modelo}). Puede tardar unos minutos."})
+        if omniroute.es_omniroute(self.config.cerebro_endpoint) and not omniroute.escuchando():
+            # Recién prendida la PC, OmniRoute tarda unos segundos en abrir su puerto.
+            for _ in range(20):
+                if self._detener.wait(1) or omniroute.escuchando():
+                    break
         try:
             return self._pensar(pregunta, ctx, motor=self.cerebro)
         except (RuntimeError, OSError) as exc:
@@ -565,6 +604,8 @@ class Nova:
                     if args["activo"] else "Salí del modo privado; vuelvo a recordar.")
         if a == "estado":
             return self.presentarme()
+        if a == "auditoria":
+            return self.auditoria()
         if a == "bajar_skills":
             return self.bajar_skills()
         if a == "skills":
@@ -697,6 +738,16 @@ class Nova:
 
     def arrancar_fondo(self) -> None:
         self.observador.arrancar()
+
+        def enrutador():
+            # Si el cerebro grande es OmniRoute en esta PC, lo prende (tarda unos segundos en estar listo).
+            try:
+                aviso = omniroute.arrancar(self.config)
+            except Exception as exc:  # noqa: BLE001 - sin OmniRoute NOVA sigue con su modelo local
+                aviso = f"No pude arrancar OmniRoute: {exc}"
+            if aviso.startswith(("No ", "OmniRoute no")):
+                self.bus.publicar({"tipo": "aviso", "texto": aviso})
+        threading.Thread(target=enrutador, daemon=True, name="nova-omniroute").start()
 
         def precalentar():
             # Carga el modelo y lee de una vez la personalidad y las herramientas: la primera respuesta ya no espera.

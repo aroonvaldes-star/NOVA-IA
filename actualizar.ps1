@@ -6,6 +6,7 @@
 #   2. Baja solo lo que cambio (git). La primera vez conecta esta carpeta con el repositorio.
 #   3. Si cambiaron las dependencias, las reinstala en el entorno de NOVA.
 #   4. Baja el orbe libre de escritorio si hay uno nuevo y rehace los accesos directos.
+#      Instala o actualiza OmniRoute (omniroute.ps1) para el cerebro grande.
 #   5. Vuelve a abrir NOVA (libre en el escritorio, o en su ventana con -Ventana).
 #
 # Si guardaste cambios tuyos en estos archivos, no se pierden: quedan en "git stash".
@@ -58,7 +59,7 @@ if (-not (Test-Path (Join-Path $Raiz '.git'))) {
 
 # ------------------------------------------------------------ 2. Cerrar NOVA
 
-$abiertos = Get-Process -Name 'llama-server', 'whisper-cli', 'piper', 'pythonw', 'python', 'nova-escritorio' -ErrorAction SilentlyContinue |
+$abiertos = Get-Process -Name 'llama-server', 'whisper-cli', 'piper', 'pythonw', 'python', 'nova-escritorio', 'node' -ErrorAction SilentlyContinue |
     Where-Object { $_.Path -and $_.Path.StartsWith($Datos, [StringComparison]::OrdinalIgnoreCase) }
 if ($abiertos) {
     Aviso 'NOVA estaba abierta; la cierro para actualizarla.'
@@ -109,6 +110,16 @@ $exeEscritorio = Obtener-Escritorio $Raiz $Datos
 Crear-Accesos $Raiz $Datos $exeEscritorio
 if ($exeEscritorio) { Bien 'Listo: "NOVA" la abre libre en el escritorio y "NOVA en ventana" en su ventana.' }
 else { Aviso 'Todavia no hay orbe de escritorio compilado; sigo con la ventana.' }
+
+# OmniRoute (cerebro grande con cambio automatico de proveedor). La primera vez pregunta por claves gratis.
+Paso 'OmniRoute'
+try {
+    $yaOmni = Test-Path (Join-Path $Datos 'omniroute\node_modules\omniroute\package.json')
+    if ($yaOmni) { & (Join-Path $Raiz 'omniroute.ps1') -SinPreguntas } else { & (Join-Path $Raiz 'omniroute.ps1') }
+} catch {
+    Aviso "OmniRoute no quedo listo: $($_.Exception.Message)"
+    Aviso 'NOVA sigue funcionando; mandame este aviso o vuelve a abrir omniroute.bat.'
+}
 
 if ($cambiaron -contains 'instalar.ps1') {
     Aviso 'Tambien cambio el instalador: cuando puedas, abre instalar.bat (lo ya descargado no se baja otra vez).'

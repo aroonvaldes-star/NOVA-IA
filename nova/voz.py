@@ -108,6 +108,10 @@ def orden_rapida(texto: str) -> OrdenRapida | None:
         return OrdenRapida("bajar_skills", {})
     if re.fullmatch(r"(que|cuales) (skills|habilidades) tienes|(tus|mis|lista de|ver) (skills|habilidades)|skills", t):
         return OrdenRapida("skills", {})
+    if re.fullmatch(r"(quien|que modelo|que cerebro|que ia) (me )?(contesto|respondio)( eso| esto| antes| lo ultimo)?|"
+                    r"(ver |muestra |mostrar |abre |dame )?(la |mi |tu )?auditoria( de (los )?modelos)?|"
+                    r"(quien|que modelos?) (te )?(ha|han) (contestado|respondido)( hoy)?", t):
+        return OrdenRapida("auditoria", {})
     if re.fullmatch(r"(tu estado|estado|que eres|quien eres)", t):
         return OrdenRapida("estado", {})
     if re.fullmatch(r"(conecta|conectar|vincula|empareja) (mi |el )?(celular|telefono|movil)", t):
