@@ -51,7 +51,7 @@ jobs:
   omniroute:
     # Instala OmniRoute como lo haria actualizar.bat en una PC nueva que ya usaba Groq, y revisa que quede seguro.
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -75,7 +75,7 @@ jobs:
             Set-Content -Encoding ascii "$env:APPDATA\NOVA\config.json"
           # En otro proceso con limite de tiempo: si se cuelga, igual se ve en que paso iba.
           $p = Start-Process powershell -ArgumentList '-NoProfile -ExecutionPolicy Bypass -Command "try { & .\omniroute.ps1 -SinPreguntas *>&1 | Out-File -Encoding utf8 salida.txt } catch { (''ERROR: '' + $_.Exception.Message) | Out-File -Append -Encoding utf8 salida.txt }"' -PassThru -NoNewWindow
-          $termino = $p.WaitForExit(1500 * 1000)
+          $termino = $p.WaitForExit(3000 * 1000)
           # GitHub muestra solo 10 avisos por paso: van varias lineas en cada uno.
           if (Test-Path salida.txt) {
             $lineas = @(Get-Content salida.txt | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() })
@@ -84,7 +84,7 @@ jobs:
           foreach ($f in "$env:LOCALAPPDATA\NOVA\estado\omniroute.log", "$env:LOCALAPPDATA\NOVA\estado\omniroute-errores.log", "$env:LOCALAPPDATA\NOVA\estado\omniroute-npm-errores.log") {
             if (Test-Path $f) { Write-Host "::notice::$(Split-Path $f -Leaf): $((Get-Content $f -Tail 12) -join ' | ')" }
           }
-          if (-not $termino) { Write-Host '::error::omniroute.ps1 no termino en 25 minutos'; Get-Process node, npm -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "::error::sigue vivo: $($_.Name) $($_.Id)" }; exit 1 }
+          if (-not $termino) { Write-Host '::error::omniroute.ps1 no termino en 50 minutos'; Get-Process node, npm -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "::error::sigue vivo: $($_.Name) $($_.Id)" }; exit 1 }
           if ((Get-Content salida.txt -Raw) -match 'Listo\. Panel de OmniRoute') { exit 0 }
           Write-Host '::error::omniroute.ps1 fallo (ver avisos)'; exit 1
       - name: Guardar lo instalado para la siguiente prueba

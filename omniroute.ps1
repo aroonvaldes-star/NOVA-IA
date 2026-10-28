@@ -180,7 +180,7 @@ if ($instalada -ne $VersionOmni) {
     Get-Process -Name 'node' -ErrorAction SilentlyContinue |
         Where-Object { $_.Path -and $_.Path.StartsWith($NodeDir, [StringComparison]::OrdinalIgnoreCase) } |
         Stop-Process -Force -ErrorAction SilentlyContinue
-    Write-Host '   ... instalando (pesa unos 500 MB, tarda unos minutos)'
+    Write-Host '   ... instalando (pesa unos 500 MB; la primera vez tarda de 10 a 30 minutos, no cierres esta ventana)'
     # Sin -Wait: ese espera tambien a los procesos que deje npm vivos y se puede quedar colgado.
     $npmLog = Join-Path $Estado 'omniroute-npm.log'
     $npmErr = Join-Path $Estado 'omniroute-npm-errores.log'
