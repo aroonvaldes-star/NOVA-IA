@@ -43,6 +43,14 @@ RECIENTE = re.compile(r"\b(hoy|ahorita|actual(es|mente)?|[uú]ltim[oa]s?|recient
                       r"clima|cotizaci[oó]n|d[oó]lar|qui[eé]n gan[oó]|marcador|estreno|lanzamiento|sali[oó]|nueva versi[oó]n|"
                       r"20(2[5-9]|3\d)|esta semana|este (mes|a[nñ]o)|busca|investiga|googlea|en internet|en la web)\b", re.I)
 URL = re.compile(r"https?://[^\s<>\"']+")
+# Preguntas sobre tus archivos, carpetas o proyectos: se contestan con las herramientas locales, no con internet.
+LOCAL = re.compile(r"\b(archivos?|carpetas?|documentos?|proyectos?|repositorio|repo|c[oó]digo|scripts?|ficheros?|"
+                   r"disco|unidad|ruta|mi (pc|compu|computadora|laptop|m[aá]quina)|descargas|escritorio|onedrive|"
+                   r"mis (notas|fotos|archivos|proyectos|documentos|carpetas))\b|[A-Za-z]:\\|~[\\/]|"
+                   # «lee notas.txt», «¿dónde dejé plan.docx?» (un nombre como «llama.cpp» solo no basta)
+                   r"\b(abre|lee|l[eé]elo|revisa|edita|analiza|resume|d[oó]nde (est[aá]|dej[eé]|qued[oó]))\b.*\w\.(py|js|ts|tsx|kt|java|cs|cpp|rs|go|md|txt|json|ya?ml|toml|docx?|xlsx?|csv|ps1|bat|html|css)\b", re.I)
+PIDE_WEB = re.compile(r"\b(en internet|en la web|en l[ií]nea|googlea|b[uú]scalo en (internet|google)|investiga en)\b", re.I)
+RUTA = re.compile(r"(?<![\w/])([A-Za-z]:\\[^\s\"'<>|?*,;]*|~[\\/][^\s\"'<>|?*,;]*)")
 PASADO = re.compile(r"\b(te acuerdas|recuerdas|la otra vez|ayer|antier|hace (unos |un par de )?d[ií]as|la semana pasada|"
                     r"(me )?dijiste|hablamos|platicamos|quedamos|lo de antes)\b", re.I)
 # «Piénsalo bien: …» manda esa pregunta al cerebro grande (otro equipo, más listo y más lento).
@@ -258,10 +266,12 @@ class Nova:
         finally:
             self.indexando = False
 
-    def _contexto_relevante(self, texto: str) -> str:
+    def _contexto_relevante(self, texto: str, local: bool = False) -> str:
         partes = []
-        for d in self.memoria.buscar_documentos(texto, 3):
+        for d in self.memoria.buscar_documentos(texto, 4 if local else 3):
             partes.append(f"- (archivo {d['ruta']}) {d['fragmento']}")
+        if local:  # de tus archivos: nada de lo aprendido en internet ni recuerdos sueltos que lo desvíen
+            return envolver("memoria", "\n".join(partes)) if partes else ""
         for r in self.memoria.buscar_recuerdos(texto, 5):
             partes.append(f"- ({r.tipo}) {r.texto}")
         for k in self.memoria.buscar_conocimiento(texto, 3):
@@ -299,6 +309,7 @@ class Nova:
             if nuevos:
                 self.bus.publicar({"tipo": "aprendi", "recuerdos": nuevos})
         en_linea = self.internet.hay_conexion()
+        local = bool(LOCAL.search(texto)) and not PIDE_WEB.search(texto) and not URL.search(texto)
         self.observador.anotar(pantalla.ventana_activa())
         sistema = personalidad.prompt_sistema(
             self.personalidad,
@@ -308,9 +319,14 @@ class Nova:
                                            " Para tareas difíciles tengo un cerebro grande en otro equipo, más lento: el usuario "
                                            "lo usa empezando con «piénsalo bien:». Puedo sugerírselo." if self.cerebro and motor is not self.cerebro else "")),
             self.memoria.perfil(self.config.perfil_max_chars) if self.config.memoria_personal else "",
-            self._contexto_relevante(texto),
+            self._contexto_relevante(texto, local),
         )
-        if sembrado is None and en_linea and self.internet.activo:
+        if local:
+            sistema += ("\n\nEsta pregunta es sobre sus archivos o carpetas: contesta con buscar_archivos, analizar_carpeta, "
+                        "listar o leer_archivo. No busques en internet ni hables de otros temas.")
+        if sembrado is None and local:
+            sembrado = self._revisar_local(texto, ctx)
+        if sembrado is None and en_linea and self.internet.activo and not local:
             sembrado = self._investigar_antes(texto, ctx)
         mensajes = [{"role": "system", "content": sistema}, *self.historial[-10:], {"role": "user", "content": texto}, *(sembrado or [])]
         busco, reintento, ultima_accion = bool(sembrado), False, None
@@ -339,7 +355,7 @@ class Nova:
                 mensajes += [{"role": "assistant", "content": salida}, _mensaje_resultado(nombre, resultado)]
                 continue
             final = FINAL.sub("", salida, count=1).strip()
-            if (not busco and not reintento and en_linea and NO_SABE.search(final)):
+            if (not busco and not reintento and en_linea and not local and NO_SABE.search(final)):
                 # No sabe: busca en seguida y vuelve a responder con lo que encontró.
                 reintento = busco = True
                 self.bus.publicar({"tipo": "reinicio"})
@@ -367,6 +383,17 @@ class Nova:
             return [{"role": "assistant", "content": 'ACCION: {"herramienta": "buscar_web", "args": ' + json.dumps({"consulta": consulta}, ensure_ascii=False) + "}"},
                     _mensaje_resultado("buscar_web", r, "Usa esto si sirve para responder; cita las páginas.")]
         return None
+
+    def _revisar_local(self, texto: str, ctx: str) -> list[dict] | None:
+        """Si escribiste una ruta, la revisa antes de pensar (carpeta: la analiza; archivo: lo lee)."""
+        m = RUTA.search(texto)
+        if not m:
+            return None
+        ruta = m.group(1).rstrip(".\\/") or m.group(1)
+        nombre = "leer_archivo" if os.path.splitext(ruta)[1] else "analizar_carpeta"
+        r = self._usar(nombre, {"ruta": ruta}, ctx)
+        return [{"role": "assistant", "content": 'ACCION: {"herramienta": "' + nombre + '", "args": ' + json.dumps({"ruta": ruta}, ensure_ascii=False) + "}"},
+                _mensaje_resultado(nombre, r)]
 
     def _usar(self, nombre: str, args: dict, ctx: str):
         self._estado("buscando" if nombre in {"buscar_web", "leer_web"} else "procesando",

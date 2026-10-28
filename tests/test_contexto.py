@@ -306,3 +306,21 @@ def test_cerebro_en_la_nube_para_todo(config, internet_falso):
     finally:
         nova.cerrar()
         nova.memoria.cerrar()
+
+
+def test_preguntas_de_tus_archivos_no_se_van_a_internet(crear_nova, internet_falso, tmp_path):
+    proyecto = tmp_path / "NOVORA-LINK"
+    proyecto.mkdir()
+    (proyecto / "README.md").write_text("# NOVORA-LINK\nEnlaza el celular.", encoding="utf-8")
+    nova = crear_nova(["FINAL: No sé qué hay ahí."])
+    nova.procesar(f"de mi proyecto {proyecto} busca lo último que cambié")
+    assert internet_falso.busquedas == []  # ni «busca», ni «último», ni «no sé» la mandan a la web
+    enviado = json.dumps(nova.motor.recibidos[0], ensure_ascii=False)
+    assert "analizar_carpeta" in enviado and "NOVORA-LINK" in enviado
+    assert "sus archivos o carpetas" in nova.motor.recibidos[0][0]["content"]
+
+
+def test_si_pides_internet_si_busca(crear_nova, internet_falso):
+    nova = crear_nova(["FINAL: Listo."])
+    nova.procesar("busca en internet proyectos de llama.cpp")
+    assert internet_falso.busquedas
